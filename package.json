@@ -1,0 +1,101 @@
+{
+  "name": "@yadimon/prio-llm-router",
+  "version": "0.1.0",
+  "description": "Priority-based LLM routing across multiple providers to reduce cost with free-first and fallback chains.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "packageManager": "npm@10.9.2",
+  "engines": {
+    "node": ">=18.18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "clean": "node -e \"import('node:fs/promises').then(fs => fs.rm('dist', { recursive: true, force: true }))\"",
+    "prepack": "npm run build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "pack": "npm pack --dry-run",
+    "pack:check": "npm run pack && publint",
+    "publish:dry-run": "npm publish --dry-run",
+    "release:patch": "npm run check && npm version patch && git push origin HEAD --follow-tags",
+    "release:minor": "npm run check && npm version minor && git push origin HEAD --follow-tags",
+    "release:major": "npm run check && npm version major && git push origin HEAD --follow-tags",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build && npm run pack:check && npm run publish:dry-run"
+  },
+  "keywords": [
+    "llm",
+    "router",
+    "fallback",
+    "gemini",
+    "google",
+    "openrouter",
+    "groq",
+    "mistral",
+    "cohere",
+    "perplexity",
+    "xai",
+    "togetherai",
+    "openai",
+    "anthropic",
+    "deepseek",
+    "typescript"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yadimon/prio-llm-router.git"
+  },
+  "homepage": "https://github.com/yadimon/prio-llm-router#readme",
+  "bugs": {
+    "url": "https://github.com/yadimon/prio-llm-router/issues"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.64",
+    "@ai-sdk/cohere": "^3.0.27",
+    "@ai-sdk/deepseek": "^2.0.26",
+    "@ai-sdk/google": "^3.0.54",
+    "@ai-sdk/groq": "^3.0.31",
+    "@ai-sdk/mistral": "^3.0.27",
+    "@ai-sdk/openai": "^3.0.48",
+    "@ai-sdk/openai-compatible": "^2.0.37",
+    "@ai-sdk/perplexity": "^3.0.26",
+    "@ai-sdk/togetherai": "^2.0.41",
+    "@ai-sdk/xai": "^3.0.74",
+    "@openrouter/ai-sdk-provider": "^2.3.3",
+    "ai": "^6.0.141"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.5.0",
+    "@vitest/coverage-v8": "^4.1.2",
+    "eslint": "^10.1.0",
+    "publint": "^0.3.18",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.58.0",
+    "vitest": "^4.1.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
