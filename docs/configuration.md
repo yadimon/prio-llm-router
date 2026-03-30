@@ -4,6 +4,7 @@ This guide explains both supported configuration styles:
 
 - direct `providers` plus `models`
 - source builders via `createLlmConnection(...)` and `createLlmSource(...)`
+- typed convenience helpers for common setups such as `createOpenRouterConnection(...)`, `createOpenRouterFreeSource(...)`, and `createOpenAICompatibleConnection(...)`
 
 ## Provider Configuration
 
@@ -115,9 +116,8 @@ The source builder API is the preferred path when you want source-local access p
 Create a reusable connection:
 
 ```ts
-const openRouter = createLlmConnection({
+const openRouter = createOpenRouterConnection({
   name: 'openrouter-main',
-  type: 'openrouter',
   auth: {
     mode: 'single',
     apiKey: process.env.OPENROUTER_API_KEY!,
@@ -128,10 +128,9 @@ const openRouter = createLlmConnection({
 Then create one or more sources from that connection:
 
 ```ts
-const kimiFree = createLlmSource(openRouter, {
+const kimiFree = createOpenRouterFreeSource(openRouter, {
   name: 'kimi-free',
   model: 'moonshotai/kimi-k2:free',
-  access: 'free',
   priority: 10,
 });
 ```
@@ -172,10 +171,9 @@ Current rule:
 Examples:
 
 ```ts
-createLlmSource(openRouter, {
+createOpenRouterFreeSource(openRouter, {
   name: 'valid-free-source',
   model: 'moonshotai/kimi-k2:free',
-  access: 'free',
 });
 ```
 

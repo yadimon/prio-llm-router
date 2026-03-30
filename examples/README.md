@@ -6,9 +6,10 @@ They import from `../src/index.js` so they work against the current source tree.
 
 ```ts
 import {
-  createLlmConnection,
+  createOpenAICompatibleConnection,
+  createOpenRouterConnection,
+  createOpenRouterFreeSource,
   createLlmRouter,
-  createLlmSource,
 } from '@yadimon/prio-llm-router';
 ```
 

@@ -29,6 +29,7 @@ The package keeps the routing logic intentionally small and predictable while re
 - [Streaming Semantics](./docs/streaming.md)
 - [Architecture Notes](./docs/architecture.md)
 - [Current Free Possibilities](./docs/current-free-possibilities.md)
+- [Local Providers](./docs/local-providers.md)
 - [Examples](./examples/README.md)
 - [Contributor Agent Notes](./AGENTS.md)
 
@@ -135,6 +136,9 @@ There is also an additive builder layer for source-centric setup:
 
 - `createLlmConnection(...)`
 - `createLlmSource(...)`
+- `createOpenRouterConnection(...)`
+- `createOpenRouterFreeSource(...)`
+- `createOpenAICompatibleConnection(...)`
 
 This is the preferred path when you want to mark a source as strict `free`.
 
@@ -151,14 +155,13 @@ Example:
 
 ```ts
 import {
-  createLlmConnection,
+  createOpenRouterConnection,
+  createOpenRouterFreeSource,
   createLlmRouter,
-  createLlmSource,
 } from '@yadimon/prio-llm-router';
 
-const openRouter = createLlmConnection({
+const openRouter = createOpenRouterConnection({
   name: 'openrouter-main',
-  type: 'openrouter',
   auth: {
     mode: 'single',
     apiKey: process.env.OPENROUTER_API_KEY!,
@@ -169,10 +172,9 @@ const openRouter = createLlmConnection({
 
 const router = createLlmRouter({
   sources: [
-    createLlmSource(openRouter, {
+    createOpenRouterFreeSource(openRouter, {
       name: 'kimi-free',
       model: 'moonshotai/kimi-k2:free',
-      access: 'free',
       priority: 10,
     }),
   ],
@@ -333,6 +335,16 @@ Use `openai-compatible` when you have an OpenAI-style endpoint that is not cover
 }
 ```
 
+If you prefer typed helpers over raw provider objects, use:
+
+```ts
+import {
+  createOpenAICompatibleConnection,
+  createOpenRouterConnection,
+  createOpenRouterFreeSource,
+} from '@yadimon/prio-llm-router';
+```
+
 This also covers local OpenAI-compatible runtimes such as LM Studio, Ollama, or other local gateways.
 
 Example for LM Studio running locally on `http://127.0.0.1:1234/v1`:
@@ -340,20 +352,22 @@ Example for LM Studio running locally on `http://127.0.0.1:1234/v1`:
 Before using this setup, make sure LM Studio's local server is running with the OpenAI-compatible API enabled.
 
 ```ts
-import { createLlmRouter } from '@yadimon/prio-llm-router';
+import {
+  createLlmRouter,
+  createOpenAICompatibleConnection,
+} from '@yadimon/prio-llm-router';
 
 const router = createLlmRouter({
   providers: [
-    {
+    createOpenAICompatibleConnection({
       name: 'lm-studio-local',
-      type: 'openai-compatible',
       baseURL: 'http://127.0.0.1:1234/v1',
       providerLabel: 'lm-studio',
       auth: {
         mode: 'single',
         apiKey: 'lm-studio',
       },
-    },
+    }).provider,
   ],
   models: [
     {
@@ -379,6 +393,8 @@ Notes:
 - the package currently requires a non-empty `apiKey`, so local runtimes that ignore auth should use a dummy value such as `'lm-studio'`
 - the `model` value must match the local model name exposed by your runtime
 
+For a focused local-setup guide, see [Local Providers](./docs/local-providers.md).
+
 ## Error Model
 
 If every target fails, the router throws `AllModelsFailedError`.
@@ -403,6 +419,9 @@ Main exports:
 - `createLlmRouter`
 - `PrioLlmRouter`
 - `createDefaultTextGenerationExecutor`
+- `createOpenRouterConnection`
+- `createOpenRouterFreeSource`
+- `createOpenAICompatibleConnection`
 - `AllModelsFailedError`
 - `RouterConfigurationError`
 

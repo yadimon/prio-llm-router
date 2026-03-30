@@ -1,19 +1,21 @@
-import { createLlmRouter } from '../src/index.js';
+import {
+  createLlmRouter,
+  createOpenAICompatibleConnection,
+} from '../src/index.js';
 
 // Start LM Studio's local server and enable its OpenAI-compatible API first.
+const connection = createOpenAICompatibleConnection({
+  name: 'lm-studio-local',
+  baseURL: 'http://127.0.0.1:1234/v1',
+  providerLabel: 'lm-studio',
+  auth: {
+    mode: 'single',
+    apiKey: 'lm-studio',
+  },
+});
+
 const router = createLlmRouter({
-  providers: [
-    {
-      name: 'lm-studio-local',
-      type: 'openai-compatible',
-      baseURL: 'http://127.0.0.1:1234/v1',
-      providerLabel: 'lm-studio',
-      auth: {
-        mode: 'single',
-        apiKey: 'lm-studio',
-      },
-    },
-  ],
+  providers: [connection.provider],
   models: [
     {
       name: 'local-qwen',
