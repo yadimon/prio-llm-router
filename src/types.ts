@@ -94,6 +94,12 @@ export interface LlmConnection<TProvider extends ProviderConfig = ProviderConfig
   provider: TProvider;
 }
 
+export type OpenRouterConnectionInput = Omit<OpenRouterProviderConfig, 'type'>;
+export type OpenAICompatibleConnectionInput = Omit<
+  OpenAICompatibleProviderConfig,
+  'type'
+>;
+
 interface LlmSourceConfigBase {
   name: string;
   enabled?: boolean;
@@ -112,6 +118,11 @@ interface OpenRouterFreeLlmSourceConfig extends LlmSourceConfigBase {
   access: 'free';
   tier?: 'free';
 }
+
+export type OpenRouterFreeSourceInput = Omit<
+  OpenRouterFreeLlmSourceConfig,
+  'access'
+>;
 
 export type LlmSourceConfig<
   TProvider extends ProviderConfig = ProviderConfig,

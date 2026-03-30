@@ -3,6 +3,11 @@ import type {
   LlmConnection,
   LlmSource,
   LlmSourceConfig,
+  OpenAICompatibleProviderConfig,
+  OpenAICompatibleConnectionInput,
+  OpenRouterConnectionInput,
+  OpenRouterFreeSourceInput,
+  OpenRouterProviderConfig,
   ProviderConfig,
 } from './types.js';
 
@@ -14,6 +19,24 @@ export function createLlmConnection<TProvider extends ProviderConfig>(
   return {
     provider,
   };
+}
+
+export function createOpenRouterConnection(
+  provider: OpenRouterConnectionInput,
+): LlmConnection<OpenRouterProviderConfig> {
+  return createLlmConnection({
+    ...provider,
+    type: 'openrouter',
+  });
+}
+
+export function createOpenAICompatibleConnection(
+  provider: OpenAICompatibleConnectionInput,
+): LlmConnection<OpenAICompatibleProviderConfig> {
+  return createLlmConnection({
+    ...provider,
+    type: 'openai-compatible',
+  });
 }
 
 export function createLlmSource<TProvider extends ProviderConfig>(
@@ -34,6 +57,16 @@ export function createLlmSource<TProvider extends ProviderConfig>(
     connection,
     config: normalizedConfig,
   };
+}
+
+export function createOpenRouterFreeSource(
+  connection: LlmConnection<OpenRouterProviderConfig>,
+  config: OpenRouterFreeSourceInput,
+): LlmSource<OpenRouterProviderConfig> {
+  return createLlmSource(connection, {
+    ...config,
+    access: 'free',
+  });
 }
 
 function assertConnectionProviderName(provider: ProviderConfig): void {

@@ -6,7 +6,13 @@ export {
   serializeError,
 } from './errors.js';
 export { createDefaultTextGenerationExecutor } from './provider-factory.js';
-export { createLlmConnection, createLlmSource } from './source-builders.js';
+export {
+  createLlmConnection,
+  createLlmSource,
+  createOpenAICompatibleConnection,
+  createOpenRouterConnection,
+  createOpenRouterFreeSource,
+} from './source-builders.js';
 export { createLlmRouter, PrioLlmRouter } from './prio-llm-router.js';
 export type {
   AnthropicProviderConfig,
@@ -26,8 +32,11 @@ export type {
   ModelTier,
   MistralProviderConfig,
   OpenAICompatibleProviderConfig,
+  OpenAICompatibleConnectionInput,
   OpenAIProviderConfig,
   OpenRouterProviderConfig,
+  OpenRouterConnectionInput,
+  OpenRouterFreeSourceInput,
   PendingAttempt,
   PerplexityProviderConfig,
   PrioLlmRouterOptions,
