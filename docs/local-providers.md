@@ -37,7 +37,7 @@ const connection = createOpenAICompatibleConnection({
   providerLabel: 'lm-studio',
   auth: {
     mode: 'single',
-    apiKey: 'lm-studio',
+    apiKey: '',
   },
 });
 
@@ -56,7 +56,7 @@ const router = createLlmRouter({
 
 Notes:
 
-- use a dummy non-empty API key if the local runtime ignores auth
+- use `apiKey: ''` when the local runtime does not require auth
 - the `model` value must match the model name exposed by the local runtime
 - `providerLabel` is optional but helps make logs and config easier to read
 
@@ -76,7 +76,7 @@ const connection = createOpenAICompatibleConnection({
   providerLabel: 'ollama',
   auth: {
     mode: 'single',
-    apiKey: 'ollama',
+    apiKey: '',
   },
 });
 

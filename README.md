@@ -18,6 +18,7 @@ The package keeps the routing logic intentionally small and predictable while re
 - Optional source builders for source-centric setup and strict free policies
 - Non-streaming text generation and optional streaming
 - Optional debug mode that mirrors attempt hooks to the console
+- Per-request and router-level attempt timeouts for clean fallback
 - Built-in support for `google`, `openrouter`, `groq`, `mistral`, `cohere`, `perplexity`, `xai`, `togetherai`, `openai`, `anthropic`, `deepseek`, and generic `openai-compatible`
 - Strict TypeScript types
 - Hook points for attempt-level logging and telemetry
@@ -118,6 +119,7 @@ const router = createLlmRouter({
 
 const result = await router.generateText({
   prompt: 'Summarize the advantages of priority-based model routing in 3 bullets.',
+  attemptTimeoutMs: 12000,
 });
 
 console.log(result.text);
@@ -243,6 +245,8 @@ console.log(final.target.name);
 
 Use `firstChunkTimeoutMs` when you want "switch if nothing starts quickly enough" behavior. If you omit it, the router waits indefinitely for the first chunk of the current target.
 
+You can also use `attemptTimeoutMs` as the shared timeout for normal requests and streaming first-chunk fallback.
+
 This makes the behavior safe for chat UIs:
 
 - no silent model switch after the answer has already started
@@ -307,6 +311,29 @@ Common model-level fields:
 - `tier`
 - `metadata`
 
+## Attempt Timeouts
+
+Use `attemptTimeoutMs` on a request when a single model attempt should fail and fall through after a fixed time:
+
+```ts
+const result = await router.generateText({
+  prompt: 'Write a short answer.',
+  attemptTimeoutMs: 8000,
+});
+```
+
+Or set a router-level default:
+
+```ts
+const router = createLlmRouter({
+  defaultAttemptTimeoutMs: 12000,
+  providers,
+  models,
+});
+```
+
+Timeouts become normal failed attempts with `error.name === 'AttemptTimeoutError'`, so they appear in `attempts` and fire `onAttemptFailure(...)` like other execution failures.
+
 ## Debug Mode And Hooks
 
 Use `debug: true` when you want the router to mirror attempt hooks to the console during development.
@@ -359,6 +386,8 @@ Use `openai-compatible` when you have an OpenAI-style endpoint that is not cover
 }
 ```
 
+`openai-compatible` is also the one built-in provider type that may use an empty API key for local or internal backends. When the key is empty, the router allows the config and creates the adapter without an `Authorization` header.
+
 If you prefer typed helpers over raw provider objects, use:
 
 ```ts
@@ -389,7 +418,7 @@ const router = createLlmRouter({
       providerLabel: 'lm-studio',
       auth: {
         mode: 'single',
-        apiKey: 'lm-studio',
+        apiKey: '',
       },
     }).provider,
   ],
@@ -414,7 +443,7 @@ Notes:
 
 - for LM Studio, enable the OpenAI-compatible local API before using this config
 - the local server still needs to expose an OpenAI-compatible HTTP API
-- the package currently requires a non-empty `apiKey`, so local runtimes that ignore auth should use a dummy value such as `'lm-studio'`
+- the package allows an empty `apiKey` for `openai-compatible`, so local runtimes can use `''` when they do not require auth
 - the `model` value must match the local model name exposed by your runtime
 
 For a focused local-setup guide, see [Local Providers](./docs/local-providers.md).
@@ -443,6 +472,7 @@ Main exports:
 - `createLlmRouter`
 - `PrioLlmRouter`
 - `createDefaultTextGenerationExecutor`
+- `AttemptTimeoutError`
 - `createOpenRouterConnection`
 - `createOpenRouterFreeSource`
 - `createOpenAICompatibleConnection`

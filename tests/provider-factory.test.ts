@@ -154,6 +154,33 @@ describe('createDefaultTextGenerationExecutor', () => {
     );
   });
 
+  it('allows openai-compatible providers with an empty API key', async () => {
+    const executor = createDefaultTextGenerationExecutor();
+
+    await executor.execute({
+      provider: {
+        name: 'local-proxy',
+        type: 'openai-compatible',
+        baseURL: 'http://127.0.0.1:1234/v1',
+        providerLabel: 'lm-studio',
+        auth: { mode: 'single', apiKey: '   ' },
+      },
+      model: {
+        name: 'local-model',
+        provider: 'local-proxy',
+        model: 'qwen2.5-7b-instruct',
+      },
+      request: {
+        prompt: 'Ping',
+      },
+    } satisfies ExecuteTextTargetInput);
+
+    expect(mocks.openAiCompatibleFactory).toHaveBeenCalledWith({
+      name: 'lm-studio',
+      baseURL: 'http://127.0.0.1:1234/v1',
+    });
+  });
+
   it('merges OpenRouter app metadata into request headers', async () => {
     const executor = createDefaultTextGenerationExecutor();
 
@@ -209,5 +236,29 @@ describe('createDefaultTextGenerationExecutor', () => {
 
     expect(mocks.googleFactory).not.toHaveBeenCalled();
     expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it('still rejects OpenRouter providers with empty API keys', async () => {
+    const executor = createDefaultTextGenerationExecutor();
+
+    await expect(
+      executor.execute({
+        provider: {
+          name: 'openrouter-main',
+          type: 'openrouter',
+          auth: { mode: 'single', apiKey: '   ' },
+        },
+        model: {
+          name: 'openrouter-free',
+          provider: 'openrouter-main',
+          model: 'moonshotai/kimi-k2:free',
+        },
+        request: {
+          prompt: 'Ping',
+        },
+      } satisfies ExecuteTextTargetInput),
+    ).rejects.toThrow(RouterConfigurationError);
+
+    expect(mocks.openRouterFactory).not.toHaveBeenCalled();
   });
 });

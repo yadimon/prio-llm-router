@@ -1,4 +1,10 @@
-import { AllModelsFailedError, RouterConfigurationError, isAbortError, serializeError } from './errors.js';
+import {
+  AllModelsFailedError,
+  AttemptTimeoutError,
+  RouterConfigurationError,
+  isAbortError,
+  serializeError,
+} from './errors.js';
 import { createDefaultTextGenerationExecutor } from './provider-factory.js';
 import type {
   AttemptRecord,
@@ -24,12 +30,14 @@ interface NormalizedRouterConfig {
   providers: ProviderConfig[];
   models: ModelConfig[];
   defaultChain?: string[];
+  defaultAttemptTimeoutMs?: number;
 }
 
 export class PrioLlmRouter {
   private readonly providersByName = new Map<string, ProviderConfig>();
   private readonly modelsByName = new Map<string, IndexedModel>();
   private readonly defaultChain: string[] | undefined;
+  private readonly defaultAttemptTimeoutMs: number | undefined;
   private readonly executor: TextGenerationExecutor;
   private readonly hooks: PrioLlmRouterOptions['hooks'] | undefined;
 
@@ -49,6 +57,7 @@ export class PrioLlmRouter {
     }
 
     this.defaultChain = normalized.defaultChain;
+    this.defaultAttemptTimeoutMs = normalized.defaultAttemptTimeoutMs;
     this.hooks = createRouterHooks(options.hooks, options.debug === true);
     this.executor = options.executor ?? (
       options.defaultProviderMaxRetries === undefined
@@ -128,13 +137,26 @@ export class PrioLlmRouter {
       }
 
       this.hooks?.onAttemptStart?.(pendingAttempt);
+      const { controller, cleanup, parentAborted } = createLinkedAbortController(
+        request.abortSignal,
+      );
 
       try {
-        const result = await this.executor.execute({
-          provider,
-          model,
-          request,
+        const result = await this.executeAttemptWithTimeout({
+          execute: () =>
+            this.executor.execute({
+              provider,
+              model,
+              request: {
+                ...request,
+                abortSignal: controller.signal,
+              },
+            }),
+          timeoutMs: request.attemptTimeoutMs ?? this.defaultAttemptTimeoutMs,
+          abortController: controller,
+          parentAborted,
         });
+        cleanup();
 
         const finishedAt = new Date();
         const attemptRecord: AttemptRecord = {
@@ -165,7 +187,9 @@ export class PrioLlmRouter {
 
         return response;
       } catch (error) {
-        if (isAbortError(error)) {
+        cleanup();
+
+        if (isAbortError(error) && parentAborted()) {
           throw error;
         }
 
@@ -223,7 +247,10 @@ export class PrioLlmRouter {
         const iterator = streamResult.textStream[Symbol.asyncIterator]();
         const firstChunk = await this.waitForFirstChunk({
           iterator,
-          timeoutMs: request.firstChunkTimeoutMs,
+          timeoutMs:
+            request.firstChunkTimeoutMs ??
+            request.attemptTimeoutMs ??
+            this.defaultAttemptTimeoutMs,
           abortController: controller,
           parentAborted,
         });
@@ -393,7 +420,7 @@ export class PrioLlmRouter {
       return nextPromise;
     }
 
-    const timeoutError = createFirstChunkTimeoutError(timeoutMs);
+    const timeoutError = new AttemptTimeoutError(timeoutMs);
 
     const timedRace = await Promise.race([
       nextPromise.then(
@@ -410,6 +437,46 @@ export class PrioLlmRouter {
     if (timedRace.kind === 'timeout') {
       abortController.abort(timeoutError);
       void nextPromise.catch(() => undefined);
+      throw timeoutError;
+    }
+
+    if (isAbortError(timedRace.error) && parentAborted()) {
+      throw timedRace.error;
+    }
+
+    throw timedRace.error;
+  }
+
+  private async executeAttemptWithTimeout<TResult>(options: {
+    execute: () => Promise<TResult>;
+    timeoutMs: number | undefined;
+    abortController: AbortController;
+    parentAborted: () => boolean;
+  }): Promise<TResult> {
+    const { execute, timeoutMs, abortController, parentAborted } = options;
+    const executionPromise = execute();
+
+    if (timeoutMs === undefined) {
+      return executionPromise;
+    }
+
+    const timeoutError = new AttemptTimeoutError(timeoutMs);
+
+    const timedRace = await Promise.race([
+      executionPromise.then(
+        (value) => ({ kind: 'value' as const, value }),
+        (error: unknown) => ({ kind: 'error' as const, error }),
+      ),
+      delay(timeoutMs).then(() => ({ kind: 'timeout' as const })),
+    ]);
+
+    if (timedRace.kind === 'value') {
+      return timedRace.value;
+    }
+
+    if (timedRace.kind === 'timeout') {
+      abortController.abort(timeoutError);
+      void executionPromise.catch(() => undefined);
       throw timeoutError;
     }
 
@@ -525,7 +592,7 @@ export class PrioLlmRouter {
       );
     }
 
-    if (!provider.auth.apiKey.trim()) {
+    if (!provider.auth.apiKey.trim() && provider.type !== 'openai-compatible') {
       throw new RouterConfigurationError(
         `Provider "${provider.name}" requires a non-empty API key.`,
       );
@@ -559,7 +626,11 @@ function resolveRouterConfig(
   options: PrioLlmRouterOptions,
 ): NormalizedRouterConfig {
   if ('sources' in options) {
-    return compileSources(options.sources, options.defaultChain);
+    return compileSources(
+      options.sources,
+      options.defaultChain,
+      options.defaultAttemptTimeoutMs,
+    );
   }
 
   const normalized: NormalizedRouterConfig = {
@@ -569,6 +640,10 @@ function resolveRouterConfig(
 
   if (options.defaultChain !== undefined) {
     normalized.defaultChain = options.defaultChain;
+  }
+
+  if (options.defaultAttemptTimeoutMs !== undefined) {
+    normalized.defaultAttemptTimeoutMs = options.defaultAttemptTimeoutMs;
   }
 
   return normalized;
@@ -588,6 +663,7 @@ function compareModels(left: IndexedModel, right: IndexedModel): number {
 function compileSources(
   sources: LlmSource[],
   defaultChain?: string[],
+  defaultAttemptTimeoutMs?: number,
 ): NormalizedRouterConfig {
   const providersByName = new Map<string, ProviderConfig>();
   const models: ModelConfig[] = [];
@@ -662,6 +738,10 @@ function compileSources(
 
   if (defaultChain !== undefined) {
     normalized.defaultChain = defaultChain;
+  }
+
+  if (defaultAttemptTimeoutMs !== undefined) {
+    normalized.defaultAttemptTimeoutMs = defaultAttemptTimeoutMs;
   }
 
   return normalized;
@@ -844,14 +924,6 @@ function createLinkedAbortController(parentSignal?: AbortSignal): {
     },
     parentAborted: () => abortedByParent,
   };
-}
-
-function createFirstChunkTimeoutError(timeoutMs: number): Error {
-  const error = new Error(
-    `The first stream chunk did not arrive within ${timeoutMs}ms.`,
-  );
-  error.name = 'FirstChunkTimeoutError';
-  return error;
 }
 
 function createEmptyFirstChunkError(targetName: string): Error {

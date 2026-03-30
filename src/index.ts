@@ -1,5 +1,6 @@
 export {
   AllModelsFailedError,
+  AttemptTimeoutError,
   PrioLlmRouterError,
   RouterConfigurationError,
   isAbortError,

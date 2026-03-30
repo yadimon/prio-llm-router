@@ -153,6 +153,7 @@ export interface GenerateTextRequestBase {
   maxOutputTokens?: number;
   stopSequences?: string[];
   abortSignal?: AbortSignal;
+  attemptTimeoutMs?: number;
   providerMaxRetries?: number;
 }
 
@@ -239,6 +240,7 @@ export interface TextGenerationExecutor {
 
 interface PrioLlmRouterCommonOptions {
   defaultChain?: string[];
+  defaultAttemptTimeoutMs?: number;
   defaultProviderMaxRetries?: number;
   debug?: boolean;
   hooks?: RouterHooks;

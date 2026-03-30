@@ -79,6 +79,8 @@ The `openai-compatible` type supports:
 
 Use this for proxies or OpenAI-style APIs that do not have a dedicated adapter.
 
+Unlike the hosted SaaS providers, `openai-compatible` may use an empty API key for local or internal backends. When the key is empty, the router accepts the config and creates the provider adapter without an `Authorization` header.
+
 ## Model Target Configuration
 
 Each model target must have:
@@ -206,6 +208,39 @@ This mode only mirrors the router hooks to the console:
 - `attempt:failure`
 
 If you also configure `hooks`, the router still calls them.
+
+## Attempt Timeouts
+
+You can configure timeouts at two levels:
+
+- `defaultAttemptTimeoutMs` on the router
+- `attemptTimeoutMs` on an individual request
+
+Request-level timeout overrides the router default.
+
+```ts
+const router = createLlmRouter({
+  defaultAttemptTimeoutMs: 12000,
+  providers,
+  models,
+});
+```
+
+```ts
+await router.generateText({
+  prompt: 'Write a short answer.',
+  attemptTimeoutMs: 8000,
+});
+```
+
+If a model attempt times out:
+
+- the attempt is recorded as failed
+- `attempt.error.name` is `AttemptTimeoutError`
+- `onAttemptFailure(...)` fires as usual
+- the router continues with the next model
+
+For `streamText(...)`, `attemptTimeoutMs` is used as the first-chunk timeout when `firstChunkTimeoutMs` is not set explicitly.
 
 ## Priority Resolution
 

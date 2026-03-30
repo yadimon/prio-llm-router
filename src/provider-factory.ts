@@ -181,7 +181,7 @@ function buildBaseTextCallOptions({
 function createProviderHandle(provider: ProviderConfig): ProviderHandle {
   const apiKey = provider.auth.apiKey.trim();
 
-  if (!apiKey) {
+  if (!apiKey && provider.type !== 'openai-compatible') {
     throw new RouterConfigurationError(
       `Provider "${provider.name}" is missing an API key.`,
     );
@@ -270,9 +270,11 @@ function createProviderHandle(provider: ProviderConfig): ProviderHandle {
     case 'openai-compatible': {
       const options: Parameters<typeof createOpenAICompatible>[0] = {
         name: provider.providerLabel ?? provider.name,
-        apiKey,
         baseURL: provider.baseURL,
       };
+      if (apiKey) {
+        options.apiKey = apiKey;
+      }
       if (provider.headers) {
         options.headers = provider.headers;
       }

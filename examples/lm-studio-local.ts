@@ -10,7 +10,7 @@ const connection = createOpenAICompatibleConnection({
   providerLabel: 'lm-studio',
   auth: {
     mode: 'single',
-    apiKey: 'lm-studio',
+    apiKey: '',
   },
 });
 

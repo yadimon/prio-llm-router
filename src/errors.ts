@@ -9,6 +9,15 @@ export class PrioLlmRouterError extends Error {
 
 export class RouterConfigurationError extends PrioLlmRouterError {}
 
+export class AttemptTimeoutError extends PrioLlmRouterError {
+  readonly timeoutMs: number;
+
+  constructor(timeoutMs: number) {
+    super(`Model attempt timed out after ${timeoutMs}ms`);
+    this.timeoutMs = timeoutMs;
+  }
+}
+
 export class AllModelsFailedError extends PrioLlmRouterError {
   readonly attempts: AttemptRecord[];
 

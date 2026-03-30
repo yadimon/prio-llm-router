@@ -284,6 +284,134 @@ describe('PrioLlmRouter', () => {
     expect(result.text).toBe('served by gemini-free');
   });
 
+  it('times out a hanging target and falls back to the next target', async () => {
+    const router = createLlmRouter({
+      providers: [
+        {
+          name: 'openrouter-main',
+          type: 'openrouter',
+          auth: { mode: 'single', apiKey: 'openrouter-key' },
+        },
+        {
+          name: 'groq-main',
+          type: 'groq',
+          auth: { mode: 'single', apiKey: 'groq-key' },
+        },
+      ],
+      models: [
+        {
+          name: 'hanging-target',
+          provider: 'openrouter-main',
+          model: 'arcee-ai/trinity-large:free',
+          priority: 10,
+        },
+        {
+          name: 'fallback-target',
+          provider: 'groq-main',
+          model: 'openai/gpt-oss-20b',
+          priority: 20,
+        },
+      ],
+      executor: createExecutor(async ({ model, request }) => {
+        await Promise.resolve();
+        if (model.name === 'hanging-target') {
+          return new Promise<ExecuteTextTargetResult>((_resolve, reject) => {
+            request.abortSignal?.addEventListener(
+              'abort',
+              () =>
+                reject(
+                  request.abortSignal?.reason instanceof Error
+                    ? request.abortSignal.reason
+                    : new Error('Aborted'),
+                ),
+              { once: true },
+            );
+          });
+        }
+
+        return {
+          text: 'served by fallback',
+          finishReason: 'stop',
+          raw: { target: model.name },
+        };
+      }),
+    });
+
+    const result = await router.generateText({
+      prompt: 'Ping',
+      attemptTimeoutMs: 10,
+    });
+
+    expect(result.target.name).toBe('fallback-target');
+    expect(result.attempts).toHaveLength(2);
+    expect(result.attempts[0]?.error?.name).toBe('AttemptTimeoutError');
+    expect(result.attempts[0]?.error?.message).toBe(
+      'Model attempt timed out after 10ms',
+    );
+    expect(result.attempts[0]?.success).toBe(false);
+    expect(result.attempts[1]?.success).toBe(true);
+  });
+
+  it('applies the router default attempt timeout when a request override is not set', async () => {
+    const router = createLlmRouter({
+      defaultAttemptTimeoutMs: 10,
+      providers: [
+        {
+          name: 'openrouter-main',
+          type: 'openrouter',
+          auth: { mode: 'single', apiKey: 'openrouter-key' },
+        },
+        {
+          name: 'groq-main',
+          type: 'groq',
+          auth: { mode: 'single', apiKey: 'groq-key' },
+        },
+      ],
+      models: [
+        {
+          name: 'slow-target',
+          provider: 'openrouter-main',
+          model: 'arcee-ai/trinity-large:free',
+          priority: 10,
+        },
+        {
+          name: 'fast-target',
+          provider: 'groq-main',
+          model: 'openai/gpt-oss-20b',
+          priority: 20,
+        },
+      ],
+      executor: createExecutor(async ({ model, request }) => {
+        await Promise.resolve();
+        if (model.name === 'slow-target') {
+          return new Promise<ExecuteTextTargetResult>((_resolve, reject) => {
+            request.abortSignal?.addEventListener(
+              'abort',
+              () =>
+                reject(
+                  request.abortSignal?.reason instanceof Error
+                    ? request.abortSignal.reason
+                    : new Error('Aborted'),
+                ),
+              { once: true },
+            );
+          });
+        }
+
+        return {
+          text: 'ok',
+          finishReason: 'stop',
+          raw: { target: model.name },
+        };
+      }),
+    });
+
+    const result = await router.generateText({ prompt: 'Ping' });
+
+    expect(result.target.name).toBe('fast-target');
+    expect(result.attempts[0]?.error?.name).toBe('AttemptTimeoutError');
+  });
+
   it('logs router attempts in debug mode', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -500,6 +628,59 @@ describe('PrioLlmRouter', () => {
     ).toThrow(RouterConfigurationError);
   });
 
+  it('accepts openai-compatible router configs with an empty API key', async () => {
+    const router = createLlmRouter({
+      providers: [
+        {
+          name: 'lm-studio',
+          type: 'openai-compatible',
+          baseURL: 'http://127.0.0.1:1234/v1',
+          auth: { mode: 'single', apiKey: '' },
+        },
+      ],
+      models: [
+        {
+          name: 'local-model',
+          provider: 'lm-studio',
+          model: 'qwen2.5-7b-instruct',
+        },
+      ],
+      executor: createExecutor(async () => {
+        await Promise.resolve();
+        return {
+          text: 'local ok',
+          finishReason: 'stop',
+          raw: {},
+        };
+      }),
+    });
+
+    const result = await router.generateText({ prompt: 'Ping' });
+
+    expect(result.text).toBe('local ok');
+  });
+
+  it('still rejects openrouter router configs with an empty API key', () => {
+    expect(() =>
+      createLlmRouter({
+        providers: [
+          {
+            name: 'openrouter-main',
+            type: 'openrouter',
+            auth: { mode: 'single', apiKey: '' },
+          },
+        ],
+        models: [
+          {
+            name: 'openrouter-free',
+            provider: 'openrouter-main',
+            model: 'moonshotai/kimi-k2:free',
+          },
+        ],
+      }),
+    ).toThrow(RouterConfigurationError);
+  });
+
   it('skips disabled targets from the implicit priority chain', async () => {
     const seenTargets: string[] = [];
 
@@ -624,11 +805,89 @@ describe('PrioLlmRouter', () => {
 
     expect(streamResult.target.name).toBe('fast-stream');
     expect(streamResult.attempts).toHaveLength(1);
-    expect(streamResult.attempts[0]?.error?.name).toBe('FirstChunkTimeoutError');
+    expect(streamResult.attempts[0]?.error?.name).toBe('AttemptTimeoutError');
     expect(chunks.join('')).toBe('fast stream');
     expect(final.text).toBe('fast stream');
     expect(final.attempts).toHaveLength(2);
     expect(final.attempts[1]?.success).toBe(true);
+  });
+
+  it('uses attemptTimeoutMs as the streaming first-chunk timeout fallback', async () => {
+    const router = createLlmRouter({
+      providers: [
+        {
+          name: 'openrouter-main',
+          type: 'openrouter',
+          auth: { mode: 'single', apiKey: 'openrouter-key' },
+        },
+        {
+          name: 'groq-main',
+          type: 'groq',
+          auth: { mode: 'single', apiKey: 'groq-key' },
+        },
+      ],
+      models: [
+        {
+          name: 'slow-stream',
+          provider: 'openrouter-main',
+          model: 'arcee-ai/trinity-large:free',
+          priority: 10,
+        },
+        {
+          name: 'fast-stream',
+          provider: 'groq-main',
+          model: 'openai/gpt-oss-20b',
+          priority: 20,
+        },
+      ],
+      executor: createExecutor(
+        async () => {
+          await Promise.resolve();
+          return {
+            text: 'unused',
+            finishReason: 'stop',
+            raw: {},
+          };
+        },
+        async ({ model }) => {
+          await Promise.resolve();
+          if (model.name === 'slow-stream') {
+            return {
+              textStream: singleUseStream(['late'], { delayMs: 50 }),
+              finishReason: Promise.resolve('stop'),
+              usage: Promise.resolve(undefined),
+              warnings: Promise.resolve(undefined),
+              raw: { model: model.name },
+            };
+          }
+
+          return {
+            textStream: singleUseStream(['fast', ' stream']),
+            finishReason: Promise.resolve('stop'),
+            usage: Promise.resolve(undefined),
+            warnings: Promise.resolve(undefined),
+            raw: { model: model.name },
+          };
+        },
+      ),
+    });
+
+    const streamResult = await router.streamText({
+      prompt: 'Ping',
+      attemptTimeoutMs: 10,
+    });
+
+    const chunks: string[] = [];
+    for await (const chunk of streamResult.textStream) {
+      chunks.push(chunk);
+    }
+
+    const final = await streamResult.final;
+
+    expect(streamResult.target.name).toBe('fast-stream');
+    expect(streamResult.attempts[0]?.error?.name).toBe('AttemptTimeoutError');
+    expect(chunks.join('')).toBe('fast stream');
+    expect(final.text).toBe('fast stream');
   });
 
   it('does not fall back after the first stream chunk has already been emitted', async () => {
