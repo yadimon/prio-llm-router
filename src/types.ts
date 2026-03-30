@@ -240,6 +240,7 @@ export interface TextGenerationExecutor {
 interface PrioLlmRouterCommonOptions {
   defaultChain?: string[];
   defaultProviderMaxRetries?: number;
+  debug?: boolean;
   hooks?: RouterHooks;
   executor?: TextGenerationExecutor;
 }

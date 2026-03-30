@@ -17,6 +17,7 @@ The package keeps the routing logic intentionally small and predictable while re
 - Separate provider config and model target config
 - Optional source builders for source-centric setup and strict free policies
 - Non-streaming text generation and optional streaming
+- Optional debug mode that mirrors attempt hooks to the console
 - Built-in support for `google`, `openrouter`, `groq`, `mistral`, `cohere`, `perplexity`, `xai`, `togetherai`, `openai`, `anthropic`, `deepseek`, and generic `openai-compatible`
 - Strict TypeScript types
 - Hook points for attempt-level logging and telemetry
@@ -107,6 +108,7 @@ const router = createLlmRouter({
       tier: 'paid',
     },
   ],
+  debug: true,
   hooks: {
     onAttemptFailure(attempt) {
       console.warn('LLM attempt failed:', attempt);
@@ -122,6 +124,8 @@ console.log(result.text);
 console.log(result.target);
 console.log(result.attempts);
 ```
+
+With `debug: true`, the router writes `attempt:start`, `attempt:success`, and `attempt:failure` events to the console while still calling your custom hooks.
 
 ## Basic Mental Model
 
@@ -302,6 +306,26 @@ Common model-level fields:
 - `priority`
 - `tier`
 - `metadata`
+
+## Debug Mode And Hooks
+
+Use `debug: true` when you want the router to mirror attempt hooks to the console during development.
+
+```ts
+const router = createLlmRouter({
+  debug: true,
+  providers,
+  models,
+});
+```
+
+That debug mode is intentionally small:
+
+- `console.log('[prio-llm-router] attempt:start', attempt)`
+- `console.log('[prio-llm-router] attempt:success', attempt)`
+- `console.error('[prio-llm-router] attempt:failure', attempt)`
+
+If you also pass `hooks`, both stay active. Debug mode does not replace custom telemetry.
 
 ## Supported Providers
 

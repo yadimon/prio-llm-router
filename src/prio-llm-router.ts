@@ -49,7 +49,7 @@ export class PrioLlmRouter {
     }
 
     this.defaultChain = normalized.defaultChain;
-    this.hooks = options.hooks;
+    this.hooks = createRouterHooks(options.hooks, options.debug === true);
     this.executor = options.executor ?? (
       options.defaultProviderMaxRetries === undefined
         ? createDefaultTextGenerationExecutor()
@@ -872,4 +872,28 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+function createRouterHooks(
+  hooks: PrioLlmRouterOptions['hooks'] | undefined,
+  debug: boolean,
+): PrioLlmRouterOptions['hooks'] | undefined {
+  if (!debug) {
+    return hooks;
+  }
+
+  return {
+    onAttemptStart: (attempt) => {
+      console.log('[prio-llm-router] attempt:start', attempt);
+      hooks?.onAttemptStart?.(attempt);
+    },
+    onAttemptSuccess: (attempt) => {
+      console.log('[prio-llm-router] attempt:success', attempt);
+      hooks?.onAttemptSuccess?.(attempt);
+    },
+    onAttemptFailure: (attempt) => {
+      console.error('[prio-llm-router] attempt:failure', attempt);
+      hooks?.onAttemptFailure?.(attempt);
+    },
+  };
 }

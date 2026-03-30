@@ -284,6 +284,125 @@ describe('PrioLlmRouter', () => {
     expect(result.text).toBe('served by gemini-free');
   });
 
+  it('logs router attempts in debug mode', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    try {
+      const router = createLlmRouter({
+        debug: true,
+        providers: [
+          {
+            name: 'openrouter-main',
+            type: 'openrouter',
+            auth: { mode: 'single', apiKey: 'openrouter-key' },
+          },
+          {
+            name: 'groq-main',
+            type: 'groq',
+            auth: { mode: 'single', apiKey: 'groq-key' },
+          },
+        ],
+        models: [
+          {
+            name: 'failing-target',
+            provider: 'openrouter-main',
+            model: 'arcee-ai/trinity-large:free',
+            priority: 10,
+          },
+          {
+            name: 'working-target',
+            provider: 'groq-main',
+            model: 'openai/gpt-oss-20b',
+            priority: 20,
+          },
+        ],
+        executor: createExecutor(async ({ model }) => {
+          await Promise.resolve();
+          if (model.name === 'failing-target') {
+            throw new Error('boom');
+          }
+
+          return {
+            text: 'ok',
+            finishReason: 'stop',
+            raw: { target: model.name },
+          };
+        }),
+      });
+
+      await router.generateText({ prompt: 'Ping' });
+
+      expect(logSpy).toHaveBeenCalledWith(
+        '[prio-llm-router] attempt:start',
+        expect.objectContaining({ targetName: 'failing-target' }),
+      );
+      expect(errorSpy).toHaveBeenCalledWith(
+        '[prio-llm-router] attempt:failure',
+        expect.objectContaining({ targetName: 'failing-target' }),
+      );
+      expect(logSpy).toHaveBeenCalledWith(
+        '[prio-llm-router] attempt:success',
+        expect.objectContaining({ targetName: 'working-target' }),
+      );
+    } finally {
+      logSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('keeps user hooks active when debug mode is enabled', async () => {
+    const onAttemptStart = vi.fn();
+    const onAttemptSuccess = vi.fn();
+    const onAttemptFailure = vi.fn();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    try {
+      const router = createLlmRouter({
+        debug: true,
+        hooks: {
+          onAttemptStart,
+          onAttemptSuccess,
+          onAttemptFailure,
+        },
+        providers: [
+          {
+            name: 'openrouter-main',
+            type: 'openrouter',
+            auth: { mode: 'single', apiKey: 'openrouter-key' },
+          },
+        ],
+        models: [
+          {
+            name: 'only-target',
+            provider: 'openrouter-main',
+            model: 'arcee-ai/trinity-large:free',
+          },
+        ],
+        executor: createExecutor(async () => {
+          await Promise.resolve();
+          return {
+            text: 'ok',
+            finishReason: 'stop',
+            raw: {},
+          };
+        }),
+      });
+
+      await router.generateText({ prompt: 'Ping' });
+
+      expect(onAttemptStart).toHaveBeenCalledTimes(1);
+      expect(onAttemptSuccess).toHaveBeenCalledTimes(1);
+      expect(onAttemptFailure).not.toHaveBeenCalled();
+      expect(logSpy).toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      logSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
   it('compiles source builders into router targets', async () => {
     const openRouterConnection = createLlmConnection({
       name: 'openrouter-main',

@@ -187,6 +187,26 @@ createLlmSource(openRouter, {
 
 Providers such as `google`, `groq`, `mistral`, and `cohere` may still have real free signup paths, but those are account-level conditions, so the package rejects `access: 'free'` for them.
 
+## Debug Mode
+
+Set `debug: true` on the router when you want attempt-level console output during development.
+
+```ts
+const router = createLlmRouter({
+  debug: true,
+  providers,
+  models,
+});
+```
+
+This mode only mirrors the router hooks to the console:
+
+- `attempt:start`
+- `attempt:success`
+- `attempt:failure`
+
+If you also configure `hooks`, the router still calls them.
+
 ## Priority Resolution
 
 If no explicit request chain is provided, the router resolves the execution order as follows:
