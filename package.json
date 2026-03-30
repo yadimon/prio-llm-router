@@ -1,6 +1,6 @@
 {
   "name": "@yadimon/prio-llm-router",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Priority-based LLM routing across multiple providers to reduce cost with free-first and fallback chains.",
   "type": "module",
   "main": "./dist/index.cjs",
