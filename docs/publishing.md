@@ -65,6 +65,8 @@ Before the first real release:
 
 The workflow already includes:
 
+- current GitHub Actions Node runtime
+- an npm CLI update step for current Trusted Publishing support
 - `id-token: write`
 - `npm publish`
 - no long-lived `NPM_TOKEN`

@@ -39,6 +39,8 @@ After the package exists on npm:
 
 This repository uses GitHub Actions for Trusted Publishing. npm also supports other CI providers, but this repo is already wired for GitHub Actions.
 
+The publish workflow uses a current Node runtime and updates npm before publishing so Trusted Publishing keeps working with npm's current OIDC requirements.
+
 ## Normal Release Flow
 
 After the one-time bootstrap:
