@@ -12,6 +12,7 @@ export type ProviderType =
   | 'openrouter'
   | 'perplexity'
   | 'togetherai'
+  | 'vercel'
   | 'xai';
 
 export type ModelTier = 'free' | 'paid';
@@ -65,6 +66,8 @@ export type PerplexityProviderConfig = ProviderConfigBase<'perplexity'>;
 
 export type TogetherAIProviderConfig = ProviderConfigBase<'togetherai'>;
 
+export type VercelProviderConfig = ProviderConfigBase<'vercel'>;
+
 export type XaiProviderConfig = ProviderConfigBase<'xai'>;
 
 export type ProviderConfig =
@@ -79,6 +82,7 @@ export type ProviderConfig =
   | OpenRouterProviderConfig
   | PerplexityProviderConfig
   | TogetherAIProviderConfig
+  | VercelProviderConfig
   | XaiProviderConfig;
 
 export interface ModelConfig {

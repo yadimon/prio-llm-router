@@ -42,9 +42,10 @@ Supported provider types:
 - `openai`
 - `anthropic`
 - `deepseek`
+- `vercel`
 - `openai-compatible`
 
-These built-in presets cover API-key-based providers with first-class AI SDK adapters plus generic OpenAI-compatible endpoints.
+These built-in presets cover API-key-based providers with first-class AI SDK adapters plus explicit Vercel AI Gateway and generic OpenAI-compatible endpoints.
 
 ## Shared Provider Fields
 
@@ -83,6 +84,30 @@ The `openai-compatible` type supports:
 Use this for proxies or OpenAI-style APIs that do not have a dedicated adapter.
 
 Unlike the hosted SaaS providers, `openai-compatible` may use an empty API key for local or internal backends. When the key is empty, the router accepts the config and creates the provider adapter without an `Authorization` header.
+
+## Vercel AI Gateway
+
+The `vercel` type maps to the official Vercel AI Gateway adapter.
+
+Use it when you want the router config to say explicitly that requests go through Vercel AI Gateway rather than a generic proxy.
+
+Supported fields:
+
+- `baseURL?: string`
+- `headers?: Record<string, string>`
+
+Example:
+
+```ts
+{
+  name: 'vercel-main',
+  type: 'vercel',
+  auth: {
+    mode: 'single',
+    apiKey: process.env.AI_GATEWAY_API_KEY!,
+  },
+}
+```
 
 ## Model Target Configuration
 

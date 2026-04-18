@@ -20,6 +20,7 @@ import {
 - [free-first.ts](./free-first.ts)
 - [lm-studio-local.ts](./lm-studio-local.ts)
 - [openai-compatible.ts](./openai-compatible.ts)
+- [vercel-gateway.ts](./vercel-gateway.ts)
 
 ## Running Examples
 
@@ -43,4 +44,8 @@ npx tsx examples/lm-studio-local.ts
 
 ```bash
 npx tsx examples/openai-compatible.ts
+```
+
+```bash
+npx tsx examples/vercel-gateway.ts
 ```

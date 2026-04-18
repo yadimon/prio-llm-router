@@ -35,6 +35,7 @@ Current matrix for built-in providers:
 | `perplexity` | no public general free tier found | no | no deterministic free-only request path |
 | `xai` | credit / billing controls | no | no deterministic free-only request path |
 | `togetherai` | minimum credit purchase | no | explicitly paid entry |
+| `vercel` | gateway billing / upstream dependent | no | gateway transport does not create a deterministic free-only request path |
 | `openai-compatible` | backend dependent | no | generic adapter cannot infer billing semantics |
 
 ## Guaranteed-Free Today
@@ -164,6 +165,7 @@ These providers are useful in the router, but not candidates for strict `free` m
 - `perplexity`
 - `xai`
 - `togetherai`
+- `vercel`
 - `openai-compatible`
 
 Reasons include:
@@ -180,6 +182,7 @@ Relevant sources:
 - Perplexity: https://docs.perplexity.ai/docs/getting-started/pricing
 - xAI: https://docs.x.ai/docs/key-information/billing
 - Together AI: https://docs.together.ai/docs/billing-credits
+- Vercel AI Gateway: https://vercel.com/docs/ai-gateway
 
 ## Practical Guidance
 

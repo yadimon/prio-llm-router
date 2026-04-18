@@ -25,6 +25,11 @@ const mocks = vi.hoisted(() => ({
       options,
     }),
   })),
+  vercelFactory: vi.fn((options: unknown) => (modelId: string) => ({
+    kind: 'vercel',
+    modelId,
+    options,
+  })),
   openRouterFactory: vi.fn((options: unknown) => (modelId: string) => ({
     kind: 'openrouter',
     modelId,
@@ -33,6 +38,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('ai', () => ({
+  createGateway: mocks.vercelFactory,
   generateText: mocks.generateText,
   streamText: mocks.streamText,
 }));
@@ -61,6 +67,7 @@ describe('createDefaultTextGenerationExecutor', () => {
     mocks.streamText.mockClear();
     mocks.googleFactory.mockClear();
     mocks.openAiCompatibleFactory.mockClear();
+    mocks.vercelFactory.mockClear();
     mocks.openRouterFactory.mockClear();
   });
 
@@ -213,6 +220,47 @@ describe('createDefaultTextGenerationExecutor', () => {
     });
   });
 
+  it('passes Vercel AI Gateway options through to the AI SDK adapter', async () => {
+    const executor = createDefaultTextGenerationExecutor();
+
+    await executor.execute({
+      provider: {
+        name: 'vercel-main',
+        type: 'vercel',
+        auth: { mode: 'single', apiKey: 'vercel-key' },
+        baseURL: 'https://ai-gateway.vercel.sh/v3/ai',
+        headers: { 'x-team': 'demo' },
+      },
+      model: {
+        name: 'vercel-gpt-oss',
+        provider: 'vercel-main',
+        model: 'openai/gpt-oss-20b',
+      },
+      request: {
+        prompt: 'Ping',
+      },
+    } satisfies ExecuteTextTargetInput);
+
+    expect(mocks.vercelFactory).toHaveBeenCalledWith({
+      apiKey: 'vercel-key',
+      baseURL: 'https://ai-gateway.vercel.sh/v3/ai',
+      headers: { 'x-team': 'demo' },
+    });
+    expect(mocks.generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: {
+          kind: 'vercel',
+          modelId: 'openai/gpt-oss-20b',
+          options: {
+            apiKey: 'vercel-key',
+            baseURL: 'https://ai-gateway.vercel.sh/v3/ai',
+            headers: { 'x-team': 'demo' },
+          },
+        },
+      }),
+    );
+  });
+
   it('rejects providers with empty API keys before calling any adapter', async () => {
     const executor = createDefaultTextGenerationExecutor();
 
@@ -260,5 +308,29 @@ describe('createDefaultTextGenerationExecutor', () => {
     ).rejects.toThrow(RouterConfigurationError);
 
     expect(mocks.openRouterFactory).not.toHaveBeenCalled();
+  });
+
+  it('rejects Vercel AI Gateway providers with empty API keys', async () => {
+    const executor = createDefaultTextGenerationExecutor();
+
+    await expect(
+      executor.execute({
+        provider: {
+          name: 'vercel-main',
+          type: 'vercel',
+          auth: { mode: 'single', apiKey: '   ' },
+        },
+        model: {
+          name: 'vercel-gpt-oss',
+          provider: 'vercel-main',
+          model: 'openai/gpt-oss-20b',
+        },
+        request: {
+          prompt: 'Ping',
+        },
+      } satisfies ExecuteTextTargetInput),
+    ).rejects.toThrow(RouterConfigurationError);
+
+    expect(mocks.vercelFactory).not.toHaveBeenCalled();
   });
 });

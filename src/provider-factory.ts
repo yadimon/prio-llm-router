@@ -9,7 +9,12 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { createPerplexity } from '@ai-sdk/perplexity';
 import { createTogetherAI } from '@ai-sdk/togetherai';
 import { createXai } from '@ai-sdk/xai';
-import { generateText, streamText, type LanguageModel } from 'ai';
+import {
+  createGateway,
+  generateText,
+  streamText,
+  type LanguageModel,
+} from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 
 import { RouterConfigurationError } from './errors.js';
@@ -318,6 +323,17 @@ function createProviderHandle(provider: ProviderConfig): ProviderHandle {
         options.headers = provider.headers;
       }
       return createTogetherAI(options);
+    }
+
+    case 'vercel': {
+      const options: Parameters<typeof createGateway>[0] = { apiKey };
+      if (provider.baseURL) {
+        options.baseURL = provider.baseURL;
+      }
+      if (provider.headers) {
+        options.headers = provider.headers;
+      }
+      return createGateway(options);
     }
 
     case 'xai': {

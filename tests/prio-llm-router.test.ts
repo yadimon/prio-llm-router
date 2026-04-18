@@ -488,6 +488,41 @@ describe('PrioLlmRouter', () => {
     expect(result.text).toBe('served by gemini-free');
   });
 
+  it('accepts vercel gateway providers as explicit router targets', async () => {
+    const router = createLlmRouter({
+      providers: [
+        {
+          name: 'vercel-main',
+          type: 'vercel',
+          auth: { mode: 'single', apiKey: 'vercel-key' },
+        },
+      ],
+      models: [
+        {
+          name: 'vercel-gpt-oss',
+          provider: 'vercel-main',
+          model: 'openai/gpt-oss-20b',
+        },
+      ],
+      executor: createExecutor(async ({ model }) => {
+        await Promise.resolve();
+        return {
+          text: `served by ${model.provider}/${model.model}`,
+          finishReason: 'stop',
+          raw: { target: model.name },
+        };
+      }),
+    });
+
+    const result = await router.generateText({
+      prompt: 'Ping',
+    });
+
+    expect(result.target.providerType).toBe('vercel');
+    expect(result.target.providerName).toBe('vercel-main');
+    expect(result.text).toBe('served by vercel-main/openai/gpt-oss-20b');
+  });
+
   it('times out a hanging target and falls back to the next target', async () => {
     const router = createLlmRouter({
       providers: [

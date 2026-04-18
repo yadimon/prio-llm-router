@@ -59,6 +59,7 @@ export type {
   TextInput,
   TogetherAIProviderConfig,
   TokenUsage,
+  VercelProviderConfig,
   XaiProviderConfig,
   PrioLlmRouterSourceOptions,
 } from './types.js';

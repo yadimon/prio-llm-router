@@ -19,7 +19,7 @@ The package keeps the routing logic intentionally small and predictable while re
 - Non-streaming text generation and optional streaming
 - Optional debug mode that mirrors attempt hooks to the console
 - Per-request and router-level attempt timeouts for clean fallback
-- Built-in support for `google`, `openrouter`, `groq`, `mistral`, `cohere`, `perplexity`, `xai`, `togetherai`, `openai`, `anthropic`, `deepseek`, and generic `openai-compatible`
+- Built-in support for `google`, `openrouter`, `groq`, `mistral`, `cohere`, `perplexity`, `xai`, `togetherai`, `openai`, `anthropic`, `deepseek`, `vercel`, and generic `openai-compatible`
 - Strict TypeScript types
 - Hook points for attempt-level logging and telemetry
 - Ready for npm publishing and GitHub CI
@@ -126,9 +126,12 @@ const result = await router.generateText({
 console.log(result.text);
 console.log(result.target);
 console.log(result.attempts);
+console.log(result.usage);
 ```
 
 With `debug: true`, the router writes `attempt:start`, `attempt:success`, and `attempt:failure` events to the console while still calling your custom hooks.
+
+When the selected provider returns usage data through the AI SDK, the router exposes it on `result.usage`. The normalized shape includes fields such as `inputTokens`, `outputTokens`, `totalTokens`, `reasoningTokens`, and `cachedInputTokens`.
 
 ## Basic Mental Model
 
@@ -386,9 +389,23 @@ If you also pass `hooks`, both stay active. Debug mode does not replace custom t
 - `openai`
 - `anthropic`
 - `deepseek`
+- `vercel`
 - `openai-compatible`
 
-These built-in types focus on API-key-based providers that map cleanly to the Vercel AI SDK. For OpenAI-style gateways and proxies, use `openai-compatible`.
+These built-in types focus on API-key-based providers that map cleanly to the Vercel AI SDK. Use `vercel` for Vercel AI Gateway and `openai-compatible` for generic OpenAI-style gateways and proxies.
+
+Use `vercel` when you want an explicit Vercel AI Gateway transport in router config:
+
+```ts
+{
+  name: 'vercel-main',
+  type: 'vercel',
+  auth: {
+    mode: 'single',
+    apiKey: process.env.AI_GATEWAY_API_KEY!,
+  },
+}
+```
 
 Use `openai-compatible` when you have an OpenAI-style endpoint that is not covered by a first-party adapter:
 
