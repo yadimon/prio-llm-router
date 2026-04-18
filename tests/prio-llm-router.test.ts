@@ -238,6 +238,210 @@ describe('PrioLlmRouter', () => {
     ).toThrow(RouterConfigurationError);
   });
 
+  it('compiles prefixed model configs against configured provider prefixes', async () => {
+    const router = createLlmRouter({
+      providers: [
+        {
+          name: 'openrouter-main',
+          prefix: 'or',
+          type: 'openrouter',
+          auth: { mode: 'single', apiKey: 'openrouter-key' },
+        },
+      ],
+      models: [
+        {
+          name: 'gemma-free',
+          model: 'or:google/gemma-4-31b-it:free',
+          priority: 10,
+          tier: 'free',
+        },
+      ],
+      executor: createExecutor(async ({ model }) => {
+        await Promise.resolve();
+        return {
+          text: `served by ${model.provider}/${model.model}`,
+          finishReason: 'stop',
+          raw: { target: model.name },
+        };
+      }),
+    });
+
+    const result = await router.generateText({ prompt: 'Ping' });
+
+    expect(result.target.name).toBe('gemma-free');
+    expect(result.target.providerName).toBe('openrouter-main');
+    expect(result.target.model).toBe('google/gemma-4-31b-it:free');
+    expect(result.text).toBe(
+      'served by openrouter-main/google/gemma-4-31b-it:free',
+    );
+  });
+
+  it('prefers exact target-name matches before provider-prefix fallback in chains', async () => {
+    const router = createLlmRouter({
+      providers: [
+        {
+          name: 'openrouter-main',
+          prefix: 'or',
+          type: 'openrouter',
+          auth: { mode: 'single', apiKey: 'openrouter-key' },
+        },
+        {
+          name: 'groq-main',
+          type: 'groq',
+          auth: { mode: 'single', apiKey: 'groq-key' },
+        },
+      ],
+      models: [
+        {
+          name: 'or:google/gemma-4-31b-it:free',
+          provider: 'groq-main',
+          model: 'openai/gpt-oss-20b',
+        },
+      ],
+      executor: createExecutor(async ({ model }) => {
+        await Promise.resolve();
+        return {
+          text: `served by ${model.provider}/${model.model}`,
+          finishReason: 'stop',
+          raw: { target: model.name },
+        };
+      }),
+    });
+
+    const result = await router.generateText({
+      prompt: 'Ping',
+      chain: ['or:google/gemma-4-31b-it:free'],
+    });
+
+    expect(result.target.name).toBe('or:google/gemma-4-31b-it:free');
+    expect(result.target.providerName).toBe('groq-main');
+    expect(result.target.model).toBe('openai/gpt-oss-20b');
+  });
+
+  it('resolves prefixed chain targets through the matching provider when no exact target exists', async () => {
+    const router = createLlmRouter({
+      providers: [
+        {
+          name: 'openrouter-main',
+          prefix: 'or',
+          type: 'openrouter',
+          auth: { mode: 'single', apiKey: 'openrouter-key' },
+        },
+      ],
+      models: [
+        {
+          name: 'configured-target',
+          provider: 'openrouter-main',
+          model: 'moonshotai/kimi-k2:free',
+        },
+      ],
+      executor: createExecutor(async ({ model }) => {
+        await Promise.resolve();
+        return {
+          text: `served by ${model.provider}/${model.model}`,
+          finishReason: 'stop',
+          raw: { target: model.name },
+        };
+      }),
+    });
+
+    const result = await router.generateText({
+      prompt: 'Ping',
+      chain: ['or:google/gemma-4-31b-it:free'],
+    });
+
+    expect(result.target.name).toBe('or:google/gemma-4-31b-it:free');
+    expect(result.target.providerName).toBe('openrouter-main');
+    expect(result.target.model).toBe('google/gemma-4-31b-it:free');
+    expect(result.text).toBe(
+      'served by openrouter-main/google/gemma-4-31b-it:free',
+    );
+  });
+
+  it('uses prefixed refs in the default chain when configured', async () => {
+    const router = createLlmRouter({
+      defaultChain: ['or:google/gemma-4-31b-it:free'],
+      providers: [
+        {
+          name: 'openrouter-main',
+          prefix: 'or',
+          type: 'openrouter',
+          auth: { mode: 'single', apiKey: 'openrouter-key' },
+        },
+      ],
+      models: [
+        {
+          name: 'configured-target',
+          provider: 'openrouter-main',
+          model: 'moonshotai/kimi-k2:free',
+        },
+      ],
+      executor: createExecutor(async ({ model }) => {
+        await Promise.resolve();
+        return {
+          text: model.name,
+          finishReason: 'stop',
+          raw: { target: model.name },
+        };
+      }),
+    });
+
+    const result = await router.generateText({ prompt: 'Ping' });
+
+    expect(result.target.name).toBe('or:google/gemma-4-31b-it:free');
+    expect(result.target.providerName).toBe('openrouter-main');
+    expect(result.target.model).toBe('google/gemma-4-31b-it:free');
+  });
+
+  it('rejects duplicate provider prefixes', () => {
+    expect(() =>
+      createLlmRouter({
+        providers: [
+          {
+            name: 'openrouter-main',
+            prefix: 'or',
+            type: 'openrouter',
+            auth: { mode: 'single', apiKey: 'openrouter-key' },
+          },
+          {
+            name: 'openrouter-backup',
+            prefix: 'or',
+            type: 'openrouter',
+            auth: { mode: 'single', apiKey: 'openrouter-key-2' },
+          },
+        ],
+        models: [
+          {
+            name: 'configured-target',
+            provider: 'openrouter-main',
+            model: 'moonshotai/kimi-k2:free',
+          },
+        ],
+      }),
+    ).toThrow(RouterConfigurationError);
+  });
+
+  it('rejects prefixed model configs that reference unknown provider prefixes', () => {
+    expect(() =>
+      createLlmRouter({
+        providers: [
+          {
+            name: 'openrouter-main',
+            prefix: 'or',
+            type: 'openrouter',
+            auth: { mode: 'single', apiKey: 'openrouter-key' },
+          },
+        ],
+        models: [
+          {
+            name: 'broken-sugar-target',
+            model: 'missing:google/gemma-4-31b-it:free',
+          },
+        ],
+      }),
+    ).toThrow(RouterConfigurationError);
+  });
+
   it('supports additional AI SDK provider presets in router configuration', async () => {
     const router = createLlmRouter({
       providers: [
@@ -729,6 +933,34 @@ describe('PrioLlmRouter', () => {
 
     expect(result.target.name).toBe('enabled-target');
     expect(seenTargets).toEqual(['enabled-target']);
+  });
+
+  it('rejects prefixed chain targets when the matched provider is disabled', async () => {
+    const router = createLlmRouter({
+      providers: [
+        {
+          name: 'openrouter-main',
+          prefix: 'or',
+          type: 'openrouter',
+          auth: { mode: 'single', apiKey: 'openrouter-key' },
+          enabled: false,
+        },
+      ],
+      models: [
+        {
+          name: 'configured-target',
+          provider: 'openrouter-main',
+          model: 'moonshotai/kimi-k2:free',
+        },
+      ],
+    });
+
+    await expect(
+      router.generateText({
+        prompt: 'Ping',
+        chain: ['or:google/gemma-4-31b-it:free'],
+      }),
+    ).rejects.toThrow('disabled or its provider is disabled');
   });
 
   it('falls back to the next stream target when the first chunk takes too long', async () => {

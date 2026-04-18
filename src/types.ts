@@ -26,6 +26,7 @@ export type ProviderAuth = SingleApiKeyAuth;
 
 interface ProviderConfigBase<TType extends ProviderType> {
   name: string;
+  prefix?: string;
   type: TType;
   auth: ProviderAuth;
   enabled?: boolean;
@@ -89,6 +90,18 @@ export interface ModelConfig {
   tier?: ModelTier;
   metadata?: Record<string, unknown>;
 }
+
+export interface PrefixedModelConfig {
+  name: string;
+  model: string;
+  provider?: never;
+  enabled?: boolean;
+  priority?: number;
+  tier?: ModelTier;
+  metadata?: Record<string, unknown>;
+}
+
+export type ModelInputConfig = ModelConfig | PrefixedModelConfig;
 
 export interface LlmConnection<TProvider extends ProviderConfig = ProviderConfig> {
   provider: TProvider;
@@ -249,7 +262,7 @@ interface PrioLlmRouterCommonOptions {
 
 export interface PrioLlmRouterModelOptions extends PrioLlmRouterCommonOptions {
   providers: ProviderConfig[];
-  models: ModelConfig[];
+  models: ModelInputConfig[];
   sources?: never;
 }
 

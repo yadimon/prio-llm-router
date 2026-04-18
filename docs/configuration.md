@@ -51,11 +51,14 @@ These built-in presets cover API-key-based providers with first-class AI SDK ada
 These fields are available on most provider configs:
 
 - `name: string`
+- `prefix?: string`
 - `type: ProviderType`
 - `auth: { mode: 'single'; apiKey: string }`
 - `enabled?: boolean`
 - `baseURL?: string`
 - `headers?: Record<string, string>`
+
+`prefix` is optional sugar for shorter model refs such as `or:google/gemma-4-31b-it:free`.
 
 ## OpenRouter Extras
 
@@ -86,7 +89,6 @@ Unlike the hosted SaaS providers, `openai-compatible` may use an empty API key f
 Each model target must have:
 
 - `name`
-- `provider`
 - `model`
 
 Example:
@@ -101,19 +103,34 @@ Example:
 }
 ```
 
+If the provider config declares `prefix: 'or'`, you can also use the sugar form:
+
+```ts
+{
+  name: 'gemma-free',
+  model: 'or:google/gemma-4-31b-it:free',
+  priority: 10,
+  tier: 'free',
+}
+```
+
 ## Model Fields
 
 - `name: string`
-- `provider: string`
+- `provider?: string`
 - `model: string`
 - `enabled?: boolean`
 - `priority?: number`
 - `tier?: 'free' | 'paid'`
 - `metadata?: Record<string, unknown>`
 
+Use `provider` in the standard form. Omit it only when `model` starts with a configured provider prefix like `or:`.
+
 ## Source Builder Configuration
 
 The source builder API is the preferred path when you want source-local access policy such as strict `free` mode.
+
+Source definitions remain explicit: they do not use provider-prefix model sugar in `createLlmSource(...)`.
 
 Create a reusable connection:
 
@@ -265,6 +282,8 @@ const router = createLlmRouter({
 
 This is often clearer than relying only on numeric priorities when you already know the exact desired sequence.
 
+`defaultChain` also accepts prefixed model refs like `or:google/gemma-4-31b-it:free`. Exact configured target names still win before prefix fallback is attempted.
+
 ## Per-Request Chains
 
 Use `chain` when different requests should use different priorities:
@@ -277,6 +296,8 @@ await router.generateText({
 ```
 
 The `chain` values are model target names, not provider names.
+
+If no exact target name matches, the router also checks for prefixed model refs using configured provider prefixes. For example, `or:google/gemma-4-31b-it:free` resolves through the provider whose config declares `prefix: 'or'`.
 
 ## Disabling Providers And Targets
 

@@ -11,6 +11,7 @@ import type {
   ExecuteStreamTextTargetResult,
   LlmSource,
   ModelConfig,
+  ModelInputConfig,
   PendingAttempt,
   PrioLlmRouterOptions,
   ProviderConfig,
@@ -33,8 +34,14 @@ interface NormalizedRouterConfig {
   defaultAttemptTimeoutMs?: number;
 }
 
+interface PrefixedModelReference {
+  prefix: string;
+  modelId: string;
+}
+
 export class PrioLlmRouter {
   private readonly providersByName = new Map<string, ProviderConfig>();
+  private readonly providersByPrefix = new Map<string, ProviderConfig>();
   private readonly modelsByName = new Map<string, IndexedModel>();
   private readonly defaultChain: string[] | undefined;
   private readonly defaultAttemptTimeoutMs: number | undefined;
@@ -75,6 +82,11 @@ export class PrioLlmRouter {
       );
       this.validateProvider(provider);
       this.providersByName.set(provider.name, provider);
+
+      if (provider.prefix) {
+        this.assertUniqueProviderPrefix(provider.prefix);
+        this.providersByPrefix.set(provider.prefix, provider);
+      }
     }
 
     normalized.models.forEach((model, index) => {
@@ -519,7 +531,9 @@ export class PrioLlmRouter {
       }
 
       seen.add(targetName);
-      const model = this.modelsByName.get(targetName);
+      const model =
+        this.modelsByName.get(targetName) ??
+        this.resolvePrefixedChainTarget(targetName);
 
       if (!model) {
         throw new RouterConfigurationError(
@@ -543,6 +557,32 @@ export class PrioLlmRouter {
     }
 
     return resolved;
+  }
+
+  private resolvePrefixedChainTarget(targetName: string): IndexedModel | undefined {
+    const reference = parsePrefixedModelReference(targetName);
+
+    if (!reference) {
+      return undefined;
+    }
+
+    const provider = this.providersByPrefix.get(reference.prefix);
+    if (!provider) {
+      return undefined;
+    }
+
+    if (!reference.modelId) {
+      throw new RouterConfigurationError(
+        `Prefixed model target "${targetName}" must include a non-empty model id.`,
+      );
+    }
+
+    return {
+      name: targetName,
+      provider: provider.name,
+      model: reference.modelId,
+      __index: Number.MAX_SAFE_INTEGER,
+    };
   }
 
   private isModelEnabled(model: ModelConfig): boolean {
@@ -592,6 +632,12 @@ export class PrioLlmRouter {
       );
     }
 
+    if (provider.prefix !== undefined && !provider.prefix.trim()) {
+      throw new RouterConfigurationError(
+        `Provider "${provider.name}" prefixes must be non-empty when configured.`,
+      );
+    }
+
     if (!provider.auth.apiKey.trim() && provider.type !== 'openai-compatible') {
       throw new RouterConfigurationError(
         `Provider "${provider.name}" requires a non-empty API key.`,
@@ -614,6 +660,14 @@ export class PrioLlmRouter {
       );
     }
   }
+
+  private assertUniqueProviderPrefix(prefix: string): void {
+    if (this.providersByPrefix.has(prefix)) {
+      throw new RouterConfigurationError(
+        `Duplicate provider prefix "${prefix}" detected.`,
+      );
+    }
+  }
 }
 
 export function createLlmRouter(
@@ -633,9 +687,10 @@ function resolveRouterConfig(
     );
   }
 
+  const normalizedProviders = normalizeProviders(options.providers);
   const normalized: NormalizedRouterConfig = {
-    providers: options.providers,
-    models: options.models,
+    providers: normalizedProviders,
+    models: compileModelInputs(normalizedProviders, options.models),
   };
 
   if (options.defaultChain !== undefined) {
@@ -649,6 +704,95 @@ function resolveRouterConfig(
   return normalized;
 }
 
+function normalizeProviders(providers: ProviderConfig[]): ProviderConfig[] {
+  return providers.map((provider) => {
+    if (provider.prefix === undefined) {
+      return provider;
+    }
+
+    return {
+      ...provider,
+      prefix: provider.prefix.trim(),
+    };
+  });
+}
+
+function compileModelInputs(
+  providers: ProviderConfig[],
+  models: ModelInputConfig[],
+): ModelConfig[] {
+  const providersByPrefix = new Map<string, ProviderConfig>();
+
+  for (const provider of providers) {
+    if (!provider.prefix) {
+      continue;
+    }
+
+    if (providersByPrefix.has(provider.prefix)) {
+      throw new RouterConfigurationError(
+        `Duplicate provider prefix "${provider.prefix}" detected.`,
+      );
+    }
+
+    providersByPrefix.set(provider.prefix, provider);
+  }
+
+  return models.map((model) => compileModelInput(model, providersByPrefix));
+}
+
+function compileModelInput(
+  model: ModelInputConfig,
+  providersByPrefix: Map<string, ProviderConfig>,
+): ModelConfig {
+  if ('provider' in model && model.provider !== undefined) {
+    return model;
+  }
+
+  const reference = parsePrefixedModelReference(model.model);
+  if (!reference) {
+    throw new RouterConfigurationError(
+      `Model "${model.name}" must either define a provider or use a prefixed model id like "or:google/gemma-4-31b-it:free".`,
+    );
+  }
+
+  const provider = providersByPrefix.get(reference.prefix);
+  if (!provider) {
+    throw new RouterConfigurationError(
+      `Model "${model.name}" references unknown provider prefix "${reference.prefix}".`,
+    );
+  }
+
+  if (!reference.modelId) {
+    throw new RouterConfigurationError(
+      `Model "${model.name}" must include a non-empty model id after the "${reference.prefix}:" prefix.`,
+    );
+  }
+
+  const compiledModel: ModelConfig = {
+    name: model.name,
+    provider: provider.name,
+    model: reference.modelId,
+  };
+
+  if (model.enabled !== undefined) {
+    compiledModel.enabled = model.enabled;
+  }
+
+  if (model.priority !== undefined) {
+    compiledModel.priority = model.priority;
+  }
+
+  if (model.tier !== undefined) {
+    compiledModel.tier = model.tier;
+  }
+
+  if (model.metadata !== undefined) {
+    compiledModel.metadata = model.metadata;
+  }
+
+  return compiledModel;
+}
+
 function compareModels(left: IndexedModel, right: IndexedModel): number {
   const leftPriority = left.priority ?? Number.MAX_SAFE_INTEGER;
   const rightPriority = right.priority ?? Number.MAX_SAFE_INTEGER;
@@ -658,6 +802,21 @@ function compareModels(left: IndexedModel, right: IndexedModel): number {
   }
 
   return left.__index - right.__index;
+}
+
+function parsePrefixedModelReference(
+  value: string,
+): PrefixedModelReference | undefined {
+  const separatorIndex = value.indexOf(':');
+
+  if (separatorIndex <= 0) {
+    return undefined;
+  }
+
+  return {
+    prefix: value.slice(0, separatorIndex).trim(),
+    modelId: value.slice(separatorIndex + 1).trim(),
+  };
 }
 
 function compileSources(

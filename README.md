@@ -61,6 +61,7 @@ const router = createLlmRouter({
   providers: [
     {
       name: 'openrouter-main',
+      prefix: 'or',
       type: 'openrouter',
       auth: {
         mode: 'single',
@@ -138,6 +139,8 @@ There are two separate layers:
 
 Your app sends requests to the router using model target names, not raw provider config.
 
+If you prefer shorter model references, providers may also expose a `prefix` such as `or`, and model targets may then omit `provider` and use `model: 'or:google/gemma-4-31b-it:free'` instead.
+
 There is also an additive builder layer for source-centric setup:
 
 - `createLlmConnection(...)`
@@ -200,7 +203,9 @@ const result = await router.generateText({
 });
 ```
 
-The chain values are target names from the `models` config, not raw provider names or raw model ids.
+The chain values are usually target names from the `models` config.
+
+If a chain entry does not match an exact configured target name, the router also checks for a provider-prefix model ref such as `or:google/gemma-4-31b-it:free`. Exact target-name matches always win before prefix fallback is attempted.
 
 If `chain` is not provided, the router uses:
 
@@ -275,6 +280,7 @@ Today the auth mode is `single`. The type layout is intentionally future-friendl
 Common provider-level fields:
 
 - `name`
+- `prefix`
 - `type`
 - `auth`
 - `enabled`
@@ -295,6 +301,17 @@ Models are named routing targets:
 }
 ```
 
+Or, when the referenced provider config declares `prefix: 'or'`:
+
+```ts
+{
+  name: 'gemma-free',
+  model: 'or:google/gemma-4-31b-it:free',
+  priority: 10,
+  tier: 'free',
+}
+```
+
 The router either:
 
 - uses `request.chain` if provided
@@ -310,6 +327,8 @@ Common model-level fields:
 - `priority`
 - `tier`
 - `metadata`
+
+`provider` is required for the standard object form. If `model` uses a configured provider prefix like `or:...`, the router resolves the provider from that prefix instead.
 
 ## Attempt Timeouts
 

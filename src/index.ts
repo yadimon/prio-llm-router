@@ -30,6 +30,7 @@ export type {
   LlmSource,
   LlmSourceConfig,
   ModelConfig,
+  ModelInputConfig,
   ModelTier,
   MistralProviderConfig,
   OpenAICompatibleProviderConfig,
