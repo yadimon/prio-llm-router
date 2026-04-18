@@ -3,5 +3,8 @@ dist
 coverage
 *.tgz
 *.log
+scripts/e2e/.env
+scripts/e2e/.env.*
+!scripts/e2e/.env.example
 .idea/
 skills/

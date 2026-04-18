@@ -32,6 +32,7 @@ The package keeps the routing logic intentionally small and predictable while re
 - [Architecture Notes](./docs/architecture.md)
 - [Current Free Possibilities](./docs/current-free-possibilities.md)
 - [Local Providers](./docs/local-providers.md)
+- [Manual Real-Provider E2E](./docs/manual-real-provider-e2e.md)
 - [Examples](./examples/README.md)
 - [Contributor Agent Notes](./AGENTS.md)
 
@@ -527,6 +528,12 @@ Main methods:
 ```bash
 npm install
 npm run check
+```
+
+For a local packed-artifact smoke test against real provider keys from `scripts/e2e/.env`, run:
+
+```bash
+npm run test:e2e:real
 ```
 
 Repository layout:
