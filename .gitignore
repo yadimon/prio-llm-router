@@ -7,4 +7,4 @@ scripts/e2e/.env
 scripts/e2e/.env.*
 !scripts/e2e/.env.example
 .idea/
-skills/
+skills-data/
