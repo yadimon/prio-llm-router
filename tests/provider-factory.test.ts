@@ -114,6 +114,46 @@ describe('createDefaultTextGenerationExecutor', () => {
     );
   });
 
+  it('passes AI SDK providerOptions through to text generation calls', async () => {
+    const executor = createDefaultTextGenerationExecutor();
+
+    await executor.execute({
+      provider: {
+        name: 'google-main',
+        type: 'google',
+        auth: { mode: 'single', apiKey: 'google-key' },
+      },
+      model: {
+        name: 'gemini-flash',
+        provider: 'google-main',
+        model: 'gemini-2.5-flash',
+      },
+      request: {
+        prompt: 'Ping',
+        providerOptions: {
+          google: {
+            thinkingConfig: {
+              thinkingBudget: 0,
+            },
+          },
+        },
+      },
+    } satisfies ExecuteTextTargetInput);
+
+    expect(mocks.generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: 'Ping',
+        providerOptions: {
+          google: {
+            thinkingConfig: {
+              thinkingBudget: 0,
+            },
+          },
+        },
+      }),
+    );
+  });
+
   it('passes openai-compatible provider labels and query params through', async () => {
     const executor = createDefaultTextGenerationExecutor();
 

@@ -24,6 +24,7 @@ import type {
   ExecuteTextTargetResult,
   OpenRouterProviderConfig,
   ProviderConfig,
+  ProviderOptions,
   TextGenerationExecutor,
   TokenUsage,
 } from './types.js';
@@ -156,6 +157,14 @@ function buildBaseTextCallOptions({
         maxOutputTokens?: number;
       }
     ).maxOutputTokens = request.maxOutputTokens;
+  }
+
+  if (request.providerOptions !== undefined) {
+    (
+      call as AiSdkGenerateTextOptions & {
+        providerOptions?: ProviderOptions;
+      }
+    ).providerOptions = request.providerOptions;
   }
 
   if (request.stopSequences !== undefined) {

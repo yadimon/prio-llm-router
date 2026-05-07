@@ -1,4 +1,4 @@
-import type { ModelMessage } from 'ai';
+import type { JSONValue, ModelMessage } from 'ai';
 
 export type ProviderType =
   | 'anthropic'
@@ -17,6 +17,10 @@ export type ProviderType =
 
 export type ModelTier = 'free' | 'paid';
 export type SourceAccessMode = 'standard' | 'free';
+export type ProviderOptions = Record<
+  string,
+  Record<string, JSONValue | undefined>
+>;
 
 export interface SingleApiKeyAuth {
   mode: 'single';
@@ -168,6 +172,7 @@ export interface GenerateTextRequestBase {
   temperature?: number;
   topP?: number;
   maxOutputTokens?: number;
+  providerOptions?: ProviderOptions;
   stopSequences?: string[];
   abortSignal?: AbortSignal;
   attemptTimeoutMs?: number;

@@ -324,6 +324,26 @@ The `chain` values are model target names, not provider names.
 
 If no exact target name matches, the router also checks for prefixed model refs using configured provider prefixes. For example, `or:google/gemma-4-31b-it:free` resolves through the provider whose config declares `prefix: 'or'`.
 
+## Provider Options
+
+Pass `providerOptions` on `generateText` or `streamText` when a provider exposes request-specific controls through Vercel AI SDK:
+
+```ts
+await router.generateText({
+  prompt: 'Answer briefly.',
+  chain: ['google-flash'],
+  providerOptions: {
+    google: {
+      thinkingConfig: {
+        thinkingBudget: 0,
+      },
+    },
+  },
+});
+```
+
+The router forwards this object unchanged to Vercel AI SDK. For Gemini 2.5 Flash, `thinkingBudget: 0` disables thinking. Other providers may support different option keys.
+
 ## Disabling Providers And Targets
 
 You can disable a whole provider:

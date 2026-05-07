@@ -19,6 +19,7 @@ The package keeps the routing logic intentionally small and predictable while re
 - Non-streaming text generation and optional streaming
 - Optional debug mode that mirrors attempt hooks to the console
 - Per-request and router-level attempt timeouts for clean fallback
+- AI SDK `providerOptions` passthrough for provider-specific controls
 - Built-in support for `google`, `openrouter`, `groq`, `mistral`, `cohere`, `perplexity`, `xai`, `togetherai`, `openai`, `anthropic`, `deepseek`, `vercel`, and generic `openai-compatible`
 - Strict TypeScript types
 - Hook points for attempt-level logging and telemetry
@@ -215,6 +216,26 @@ If `chain` is not provided, the router uses:
 
 - `defaultChain` from setup if present
 - otherwise all enabled model targets sorted by ascending `priority`
+
+## Provider Options
+
+`providerOptions` are passed through to Vercel AI SDK `generateText` and `streamText` calls for provider-specific controls:
+
+```ts
+const result = await router.generateText({
+  prompt: 'Answer briefly.',
+  chain: ['google-flash'],
+  providerOptions: {
+    google: {
+      thinkingConfig: {
+        thinkingBudget: 0,
+      },
+    },
+  },
+});
+```
+
+For Gemini 2.5 Flash, `thinkingBudget: 0` disables thinking. These options are provider-specific, so check the matching AI SDK provider documentation for the accepted shape.
 
 ## Messages Instead of Prompt
 
