@@ -38,6 +38,7 @@
     "pack": "npm pack --dry-run",
     "pack:check": "npm run pack && publint",
     "publish:dry-run": "npm publish --dry-run",
+    "smoke:published": "node ./scripts/smoke-published.mjs",
     "release:patch": "npm run check && npm version patch && git push origin HEAD --follow-tags",
     "release:minor": "npm run check && npm version minor && git push origin HEAD --follow-tags",
     "release:major": "npm run check && npm version major && git push origin HEAD --follow-tags",
