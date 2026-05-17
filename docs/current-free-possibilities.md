@@ -24,7 +24,7 @@ Current matrix for built-in providers:
 
 | Provider type | Current free path | Strict `free` support | Notes |
 | --- | --- | --- | --- |
-| `openrouter` | explicit `:free` model ids | yes | only explicit `:free` models are accepted in strict `free` mode |
+| `openrouter` | explicit `:free` model ids or `openrouter/free` | yes | strict `free` mode accepts `:free` model ids and the `openrouter/free` random-free-model routing alias |
 | `google` | Gemini API free tier | no, manual only | free depends on project billing state |
 | `groq` | account Free plan | no, manual only | free depends on account plan |
 | `mistral` | Experiment plan | no, manual only | free depends on workspace plan |
@@ -45,18 +45,17 @@ Current matrix for built-in providers:
 Status:
 
 - supported by strict `free` mode
-- enforced by explicit model ids that end in `:free`
+- enforced by explicit model ids that end in `:free`, or the `openrouter/free` random-free-model routing alias
 
 Why it qualifies:
 
-- the free-safe path is part of the model identifier itself
+- the free-safe path is part of the model identifier itself (`:free` variant or the `openrouter/free` routing alias)
 - the package can reject non-free variants before sending any request
 
 Strict `free` rules in this package:
 
 - provider type must be `openrouter`
-- model id must end with `:free`
-- `openrouter/free` is not accepted in strict `free` mode because it is provider-side routing, not an explicit deterministic model target
+- model id must end with `:free`, or be `openrouter/free` (OpenRouter's random free-model routing alias)
 
 Relevant sources:
 

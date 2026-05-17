@@ -846,18 +846,6 @@ describe('PrioLlmRouter', () => {
       createLlmRouter({
         sources: [
           createLlmSource(openRouterConnection, {
-            name: 'bad-openrouter-free',
-            model: 'openrouter/free',
-            access: 'free',
-          } as never),
-        ],
-      }),
-    ).toThrow(RouterConfigurationError);
-
-    expect(() =>
-      createLlmRouter({
-        sources: [
-          createLlmSource(openRouterConnection, {
             name: 'paid-looking-openrouter',
             model: 'openai/gpt-4.1-mini',
             access: 'free',
@@ -865,6 +853,26 @@ describe('PrioLlmRouter', () => {
         ],
       }),
     ).toThrow(RouterConfigurationError);
+  });
+
+  it('accepts openrouter/free as a random free-model routing alias', () => {
+    const openRouterConnection = createLlmConnection({
+      name: 'openrouter-main',
+      type: 'openrouter',
+      auth: { mode: 'single', apiKey: 'openrouter-key' },
+    });
+
+    expect(() =>
+      createLlmRouter({
+        sources: [
+          createLlmSource(openRouterConnection, {
+            name: 'random-openrouter-free',
+            model: 'openrouter/free',
+            access: 'free',
+          }),
+        ],
+      }),
+    ).not.toThrow();
   });
 
   it('accepts openai-compatible router configs with an empty API key', async () => {

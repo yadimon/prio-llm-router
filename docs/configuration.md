@@ -209,8 +209,7 @@ It means:
 Current rule:
 
 - only `openrouter` supports strict `free`
-- the model must be an explicit `:free` model id
-- `openrouter/free` is rejected in strict `free` mode
+- the model must be an explicit `:free` model id, or `openrouter/free` for random free-model routing
 
 Examples:
 
@@ -223,7 +222,7 @@ createOpenRouterFreeSource(openRouter, {
 
 ```ts
 createLlmSource(openRouter, {
-  name: 'invalid-free-source',
+  name: 'random-free-source',
   model: 'openrouter/free',
   access: 'free',
 });

@@ -135,7 +135,7 @@ interface StandardLlmSourceConfig extends LlmSourceConfigBase {
 }
 
 interface OpenRouterFreeLlmSourceConfig extends LlmSourceConfigBase {
-  model: `${string}:free`;
+  model: `${string}:free` | 'openrouter/free';
   access: 'free';
   tier?: 'free';
 }

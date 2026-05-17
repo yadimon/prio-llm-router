@@ -932,14 +932,12 @@ function assertGuaranteedFreeSource(
   const normalizedModel = model.trim();
 
   if (normalizedModel === 'openrouter/free') {
-    throw new RouterConfigurationError(
-      `Free source "${provider.name}" cannot use "openrouter/free". Use an explicit ":free" model id instead.`,
-    );
+    return;
   }
 
   if (!normalizedModel.endsWith(':free')) {
     throw new RouterConfigurationError(
-      `Free OpenRouter sources must use an explicit ":free" model id. Received "${normalizedModel}".`,
+      `Free OpenRouter sources must use a ":free" model id or "openrouter/free". Received "${normalizedModel}".`,
     );
   }
 }

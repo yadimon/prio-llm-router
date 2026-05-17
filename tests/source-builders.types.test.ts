@@ -27,9 +27,8 @@ createLlmSource(googleConnection, {
   access: 'free',
 });
 
-// @ts-expect-error strict free OpenRouter sources must use explicit :free model ids
-createLlmSource(openRouterConnection, {
-  name: 'invalid-openrouter-free',
+const randomFreeSource = createLlmSource(openRouterConnection, {
+  name: 'random-openrouter-free',
   model: 'openrouter/free',
   access: 'free',
 });
@@ -38,5 +37,10 @@ describe('createLlmSource typing', () => {
   it('keeps strict free source configs typed for OpenRouter only', () => {
     expect(strictFreeSource.config.access).toBe('free');
     expect(strictFreeSource.config.model).toBe('moonshotai/kimi-k2:free');
+  });
+
+  it('accepts openrouter/free as a strict free model id', () => {
+    expect(randomFreeSource.config.access).toBe('free');
+    expect(randomFreeSource.config.model).toBe('openrouter/free');
   });
 });
