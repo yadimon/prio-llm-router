@@ -24,7 +24,6 @@ import type {
   ExecuteTextTargetResult,
   OpenRouterProviderConfig,
   ProviderConfig,
-  ProviderOptions,
   TextGenerationExecutor,
   TokenUsage,
 } from './types.js';
@@ -153,25 +152,19 @@ function buildBaseTextCallOptions({
 
   if (request.maxOutputTokens !== undefined) {
     (
-      call as AiSdkGenerateTextOptions & {
-        maxOutputTokens?: number;
-      }
+      call
     ).maxOutputTokens = request.maxOutputTokens;
   }
 
   if (request.providerOptions !== undefined) {
     (
-      call as AiSdkGenerateTextOptions & {
-        providerOptions?: ProviderOptions;
-      }
+      call
     ).providerOptions = request.providerOptions;
   }
 
   if (request.stopSequences !== undefined) {
     (
-      call as AiSdkGenerateTextOptions & {
-        stopSequences?: string[];
-      }
+      call
     ).stopSequences = request.stopSequences;
   }
 
@@ -183,13 +176,11 @@ function buildBaseTextCallOptions({
     ).prompt = request.prompt;
   } else {
     (
-      call as AiSdkGenerateTextOptions & {
-        messages?: ExecuteTextTargetInput['request']['messages'];
-      }
+      call
     ).messages = request.messages;
   }
 
-  return call as Record<string, unknown>;
+  return call;
 }
 
 function createProviderHandle(provider: ProviderConfig): ProviderHandle {
