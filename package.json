@@ -72,7 +72,7 @@
     "url": "https://github.com/yadimon/prio-llm-router/issues"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.64",
+    "@ai-sdk/anthropic": "^4.0.1",
     "@ai-sdk/cohere": "^3.0.27",
     "@ai-sdk/deepseek": "^2.0.26",
     "@ai-sdk/google": "^3.0.54",
