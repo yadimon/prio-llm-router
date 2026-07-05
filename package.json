@@ -73,7 +73,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.64",
-    "@ai-sdk/cohere": "^3.0.27",
+    "@ai-sdk/cohere": "^4.0.5",
     "@ai-sdk/deepseek": "^2.0.26",
     "@ai-sdk/google": "^3.0.54",
     "@ai-sdk/groq": "^3.0.31",
