@@ -2,7 +2,6 @@ import {
   AllModelsFailedError,
   AttemptTimeoutError,
   RouterConfigurationError,
-  isAbortError,
   serializeError,
 } from './errors.js';
 import { createDefaultTextGenerationExecutor } from './provider-factory.js';
@@ -166,7 +165,6 @@ export class PrioLlmRouter {
             }),
           timeoutMs: request.attemptTimeoutMs ?? this.defaultAttemptTimeoutMs,
           abortController: controller,
-          parentAborted,
         });
         cleanup();
 
@@ -201,7 +199,7 @@ export class PrioLlmRouter {
       } catch (error) {
         cleanup();
 
-        if (isAbortError(error) && parentAborted()) {
+        if (parentAborted()) {
           throw error;
         }
 
@@ -264,7 +262,6 @@ export class PrioLlmRouter {
             request.attemptTimeoutMs ??
             this.defaultAttemptTimeoutMs,
           abortController: controller,
-          parentAborted,
         });
 
         if (firstChunk.done) {
@@ -283,7 +280,7 @@ export class PrioLlmRouter {
       } catch (error) {
         cleanup();
 
-        if (isAbortError(error) && parentAborted()) {
+        if (parentAborted()) {
           throw error;
         }
 
@@ -423,9 +420,8 @@ export class PrioLlmRouter {
     iterator: AsyncIterator<string>;
     timeoutMs: number | undefined;
     abortController: AbortController;
-    parentAborted: () => boolean;
   }): Promise<IteratorResult<string>> {
-    const { iterator, timeoutMs, abortController, parentAborted } = options;
+    const { iterator, timeoutMs, abortController } = options;
     const nextPromise = iterator.next();
 
     if (timeoutMs === undefined) {
@@ -434,38 +430,39 @@ export class PrioLlmRouter {
 
     const timeoutError = new AttemptTimeoutError(timeoutMs);
 
-    const timedRace = await Promise.race([
-      nextPromise.then(
-        (value) => ({ kind: 'value' as const, value }),
-        (error: unknown) => ({ kind: 'error' as const, error }),
-      ),
-      delay(timeoutMs).then(() => ({ kind: 'timeout' as const })),
-    ]);
+    const timeout = delay(timeoutMs);
 
-    if (timedRace.kind === 'value') {
-      return timedRace.value;
-    }
+    try {
+      const timedRace = await Promise.race([
+        nextPromise.then(
+          (value) => ({ kind: 'value' as const, value }),
+          (error: unknown) => ({ kind: 'error' as const, error }),
+        ),
+        timeout.promise.then(() => ({ kind: 'timeout' as const })),
+      ]);
 
-    if (timedRace.kind === 'timeout') {
-      abortController.abort(timeoutError);
-      void nextPromise.catch(() => undefined);
-      throw timeoutError;
-    }
+      if (timedRace.kind === 'value') {
+        return timedRace.value;
+      }
 
-    if (isAbortError(timedRace.error) && parentAborted()) {
+      if (timedRace.kind === 'timeout') {
+        abortController.abort(timeoutError);
+        void nextPromise.catch(() => undefined);
+        throw timeoutError;
+      }
+
       throw timedRace.error;
+    } finally {
+      timeout.cancel();
     }
-
-    throw timedRace.error;
   }
 
   private async executeAttemptWithTimeout<TResult>(options: {
     execute: () => Promise<TResult>;
     timeoutMs: number | undefined;
     abortController: AbortController;
-    parentAborted: () => boolean;
   }): Promise<TResult> {
-    const { execute, timeoutMs, abortController, parentAborted } = options;
+    const { execute, timeoutMs, abortController } = options;
     const executionPromise = execute();
 
     if (timeoutMs === undefined) {
@@ -474,29 +471,31 @@ export class PrioLlmRouter {
 
     const timeoutError = new AttemptTimeoutError(timeoutMs);
 
-    const timedRace = await Promise.race([
-      executionPromise.then(
-        (value) => ({ kind: 'value' as const, value }),
-        (error: unknown) => ({ kind: 'error' as const, error }),
-      ),
-      delay(timeoutMs).then(() => ({ kind: 'timeout' as const })),
-    ]);
+    const timeout = delay(timeoutMs);
 
-    if (timedRace.kind === 'value') {
-      return timedRace.value;
-    }
+    try {
+      const timedRace = await Promise.race([
+        executionPromise.then(
+          (value) => ({ kind: 'value' as const, value }),
+          (error: unknown) => ({ kind: 'error' as const, error }),
+        ),
+        timeout.promise.then(() => ({ kind: 'timeout' as const })),
+      ]);
 
-    if (timedRace.kind === 'timeout') {
-      abortController.abort(timeoutError);
-      void executionPromise.catch(() => undefined);
-      throw timeoutError;
-    }
+      if (timedRace.kind === 'value') {
+        return timedRace.value;
+      }
 
-    if (isAbortError(timedRace.error) && parentAborted()) {
+      if (timedRace.kind === 'timeout') {
+        abortController.abort(timeoutError);
+        void executionPromise.catch(() => undefined);
+        throw timeoutError;
+      }
+
       throw timedRace.error;
+    } finally {
+      timeout.cancel();
     }
-
-    throw timedRace.error;
   }
 
   private resolveExecutionChain(chain?: string[]): IndexedModel[] {
@@ -1097,10 +1096,21 @@ function createStreamClosedEarlyError(): Error {
   return error;
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
+function delay(ms: number): { promise: Promise<void>; cancel: () => void } {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const promise = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, ms);
   });
+
+  return {
+    promise,
+    cancel: () => {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+    },
+  };
 }
 
 function createRouterHooks(

@@ -69,6 +69,42 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
+function createTwoTargetRouter(
+  executor: TextGenerationExecutor,
+  options: { defaultAttemptTimeoutMs?: number } = {},
+) {
+  return createLlmRouter({
+    ...options,
+    providers: [
+      {
+        name: 'primary-provider',
+        type: 'openrouter',
+        auth: { mode: 'single', apiKey: 'primary-key' },
+      },
+      {
+        name: 'fallback-provider',
+        type: 'groq',
+        auth: { mode: 'single', apiKey: 'fallback-key' },
+      },
+    ],
+    models: [
+      {
+        name: 'primary-target',
+        provider: 'primary-provider',
+        model: 'primary-model',
+        priority: 10,
+      },
+      {
+        name: 'fallback-target',
+        provider: 'fallback-provider',
+        model: 'fallback-model',
+        priority: 20,
+      },
+    ],
+    executor,
+  });
+}
+
 describe('PrioLlmRouter', () => {
   it('falls back to the next target when a higher-priority target fails', async () => {
     const execute = vi.fn<
@@ -649,6 +685,184 @@ describe('PrioLlmRouter', () => {
 
     expect(result.target.name).toBe('fast-target');
     expect(result.attempts[0]?.error?.name).toBe('AttemptTimeoutError');
+  });
+
+  it('clears the attempt timer after generateText succeeds', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const router = createTwoTargetRouter(
+        createExecutor(async () => {
+          await Promise.resolve();
+          return {
+            text: 'fast success',
+            finishReason: 'stop',
+            raw: {},
+          };
+        }),
+        { defaultAttemptTimeoutMs: 12_000 },
+      );
+
+      const result = await router.generateText({ prompt: 'Ping' });
+
+      expect(result.text).toBe('fast success');
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('clears the first-chunk timer after streamText selects a target', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const router = createTwoTargetRouter(
+        createExecutor(async () => {
+          await Promise.resolve();
+          return {
+            text: 'unused',
+            finishReason: 'stop',
+            raw: {},
+          };
+        }),
+        { defaultAttemptTimeoutMs: 12_000 },
+      );
+
+      const result = await router.streamText({ prompt: 'Ping' });
+
+      expect(result.target.name).toBe('primary-target');
+      expect(vi.getTimerCount()).toBe(0);
+
+      for await (const chunk of result.textStream) {
+        expect(chunk).toBe('stream:primary-target');
+      }
+      await result.final;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops generateText fallback when the caller aborts with a custom error', async () => {
+    const callerAbort = new Error('client disconnected');
+    const controller = new AbortController();
+    const execute = vi.fn(
+      async ({ model, request }: ExecuteTextTargetInput) => {
+        await Promise.resolve();
+
+        if (model.name === 'primary-target') {
+          return new Promise<ExecuteTextTargetResult>((_resolve, reject) => {
+            const rejectFromAbort = (): void => {
+              reject(
+                request.abortSignal?.reason instanceof Error
+                  ? request.abortSignal.reason
+                  : new Error('Aborted'),
+              );
+            };
+
+            if (request.abortSignal?.aborted) {
+              rejectFromAbort();
+            } else {
+              request.abortSignal?.addEventListener('abort', rejectFromAbort, {
+                once: true,
+              });
+            }
+          });
+        }
+
+        return {
+          text: 'fallback must not run',
+          finishReason: 'stop',
+          raw: {},
+        };
+      },
+    );
+    const router = createTwoTargetRouter(createExecutor(execute));
+
+    const resultPromise = router.generateText({
+      prompt: 'Ping',
+      abortSignal: controller.signal,
+    });
+    controller.abort(callerAbort);
+
+    await expect(resultPromise).rejects.toBe(callerAbort);
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops pre-chunk stream fallback when the caller aborts with a custom error', async () => {
+    const callerAbort = new Error('client disconnected');
+    const controller = new AbortController();
+    const stream = vi.fn(
+      async ({ model, request }: ExecuteTextTargetInput) => {
+        await Promise.resolve();
+
+        if (model.name === 'primary-target') {
+          const textStream: AsyncIterable<string> = {
+            [Symbol.asyncIterator]() {
+              return {
+                next: () =>
+                  new Promise<IteratorResult<string>>((_resolve, reject) => {
+                    const rejectFromAbort = (): void => {
+                      reject(
+                        request.abortSignal?.reason instanceof Error
+                          ? request.abortSignal.reason
+                          : new Error('Aborted'),
+                      );
+                    };
+
+                    if (request.abortSignal?.aborted) {
+                      rejectFromAbort();
+                    } else {
+                      request.abortSignal?.addEventListener(
+                        'abort',
+                        rejectFromAbort,
+                        { once: true },
+                      );
+                    }
+                  }),
+              };
+            },
+          };
+
+          return {
+            textStream,
+            finishReason: Promise.resolve('stop'),
+            usage: Promise.resolve(undefined),
+            warnings: Promise.resolve(undefined),
+            raw: {},
+          };
+        }
+
+        return {
+          textStream: singleUseStream(['fallback must not run']),
+          finishReason: Promise.resolve('stop'),
+          usage: Promise.resolve(undefined),
+          warnings: Promise.resolve(undefined),
+          raw: {},
+        };
+      },
+    );
+    const router = createTwoTargetRouter(
+      createExecutor(
+        async () => {
+          await Promise.resolve();
+          return {
+            text: 'unused',
+            finishReason: 'stop',
+            raw: {},
+          };
+        },
+        stream,
+      ),
+    );
+
+    const resultPromise = router.streamText({
+      prompt: 'Ping',
+      abortSignal: controller.signal,
+    });
+    controller.abort(callerAbort);
+
+    await expect(resultPromise).rejects.toBe(callerAbort);
+    expect(stream).toHaveBeenCalledTimes(1);
   });
 
   it('logs router attempts in debug mode', async () => {
