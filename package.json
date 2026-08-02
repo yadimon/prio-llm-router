@@ -1,7 +1,7 @@
 {
   "name": "@yadimon/prio-llm-router",
   "version": "0.7.4",
-  "description": "Priority-based LLM routing across multiple providers to reduce cost with free-first and fallback chains.",
+  "description": "Deterministic priority and fallback routing for text generation across Vercel AI SDK providers.",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -60,6 +60,11 @@
     "openai",
     "anthropic",
     "deepseek",
+    "vercel-ai-sdk",
+    "ai-sdk",
+    "ai-gateway",
+    "openai-compatible",
+    "streaming",
     "typescript"
   ],
   "license": "MIT",

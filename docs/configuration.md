@@ -283,6 +283,29 @@ If a model attempt times out:
 
 For `streamText(...)`, `attemptTimeoutMs` is used as the first-chunk timeout when `firstChunkTimeoutMs` is not set explicitly.
 
+## Provider Retries
+
+AI SDK retries are configured separately from router fallback:
+
+- `defaultProviderMaxRetries` sets the router-wide default.
+- `providerMaxRetries` overrides it for one request.
+- The package default is `0`, so one failed provider call advances directly to the next target.
+
+```ts
+const router = createLlmRouter({
+  defaultProviderMaxRetries: 1,
+  providers,
+  models,
+});
+
+await router.generateText({
+  prompt: 'Write a short answer.',
+  providerMaxRetries: 0,
+});
+```
+
+Provider retries happen inside one target attempt. Router fallback starts only after that target ultimately throws or reaches its attempt timeout.
+
 ## Priority Resolution
 
 If no explicit request chain is provided, the router resolves the execution order as follows:

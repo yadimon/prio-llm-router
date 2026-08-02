@@ -1,60 +1,26 @@
 # @yadimon/prio-llm-router
 
-`@yadimon/prio-llm-router` is a TypeScript library for routing text generation requests through a priority-ordered chain of LLM targets.
+Deterministic, in-process fallback routing for text generation across Vercel AI SDK providers.
 
-It is built for the common "free models first, paid models later" setup:
+Use one application-facing API while trying model targets in the order you choose: a free model first, a fast provider second, a paid model last, or a different chain for each workload. The router uses your provider keys directly and does not require a separate gateway service.
 
-- providers are configured once with names and API keys
-- models are configured once with names, provider references, priorities, and metadata
-- each request can use either an explicit chain or the implicit global priority order
-- failures automatically fall through to the next configured target
+```text
+request -> target 1 -> execution error or timeout -> target 2 -> success
+                                                    |
+                                                    +-> result + attempt history
+```
 
-The package keeps the routing logic intentionally small and predictable while reusing the Vercel AI SDK provider ecosystem for the actual provider calls.
-
-## Features
-
-- Priority-based fallback across multiple providers and models
-- Separate provider config and model target config
-- Optional source builders for source-centric setup and strict free policies
-- Non-streaming text generation and optional streaming
-- Optional debug mode that mirrors attempt hooks to the console
-- Per-request and router-level attempt timeouts for clean fallback
-- AI SDK `providerOptions` passthrough for provider-specific controls
-- Built-in support for `google`, `openrouter`, `groq`, `mistral`, `cohere`, `perplexity`, `xai`, `togetherai`, `openai`, `anthropic`, `deepseek`, `vercel`, and generic `openai-compatible`
-- Strict TypeScript types
-- Hook points for attempt-level logging and telemetry
-- Ready for npm publishing and GitHub CI
-- Structured to support future provider key pools without changing the model-chain API
-
-## Documentation
-
-- [Configuration Guide](./docs/configuration.md)
-- [Streaming Semantics](./docs/streaming.md)
-- [Architecture Notes](./docs/architecture.md)
-- [Current Free Possibilities](./docs/current-free-possibilities.md)
-- [Local Providers](./docs/local-providers.md)
-- [Manual Real-Provider E2E](./docs/manual-real-provider-e2e.md)
-- [Examples](./examples/README.md)
-- [Contributor Agent Notes](./AGENTS.md)
-
-## Installation
+## Install
 
 ```bash
 npm install @yadimon/prio-llm-router
 ```
 
-## When To Use It
-
-This package is a good fit when:
-
-- you want to try multiple providers in a deterministic order
-- you want free models first and paid models later
-- you want one stable application-facing API while provider choices evolve
-- you want fallback behavior to live in one place instead of being spread across app code
-
-It is not trying to be a universal orchestration framework. The goal is a narrow, reliable router for text calls.
+Requirements: Node.js `>=18.18` and ESM or CommonJS.
 
 ## Quick Start
+
+This example uses one OpenRouter key, tries the random free-model route first, and uses a paid model only if the first call throws.
 
 ```ts
 import { createLlmRouter } from '@yadimon/prio-llm-router';
@@ -62,207 +28,237 @@ import { createLlmRouter } from '@yadimon/prio-llm-router';
 const router = createLlmRouter({
   providers: [
     {
-      name: 'openrouter-main',
-      prefix: 'or',
+      name: 'openrouter',
       type: 'openrouter',
       auth: {
         mode: 'single',
         apiKey: process.env.OPENROUTER_API_KEY!,
       },
-      appName: 'prio-llm-router-demo',
+      appName: 'my-app',
       appUrl: 'https://example.com',
-    },
-    {
-      name: 'groq-main',
-      type: 'groq',
-      auth: {
-        mode: 'single',
-        apiKey: process.env.GROQ_API_KEY!,
-      },
-    },
-    {
-      name: 'openai-main',
-      type: 'openai',
-      auth: {
-        mode: 'single',
-        apiKey: process.env.OPENAI_API_KEY!,
-      },
     },
   ],
   models: [
     {
-      name: 'trinity-free',
-      provider: 'openrouter-main',
-      model: 'arcee-ai/trinity-large:free',
+      name: 'free-first',
+      provider: 'openrouter',
+      model: 'openrouter/free',
       priority: 10,
       tier: 'free',
     },
     {
-      name: 'groq-oss',
-      provider: 'groq-main',
-      model: 'openai/gpt-oss-20b',
-      priority: 20,
-      tier: 'free',
-    },
-    {
-      name: 'gpt-4.1-paid',
-      provider: 'openai-main',
-      model: 'gpt-4.1-mini',
+      name: 'paid-backup',
+      provider: 'openrouter',
+      model: 'openai/gpt-4.1-mini',
       priority: 100,
       tier: 'paid',
     },
   ],
-  debug: true,
-  hooks: {
-    onAttemptFailure(attempt) {
-      console.warn('LLM attempt failed:', attempt);
-    },
-  },
 });
 
 const result = await router.generateText({
-  prompt: 'Summarize the advantages of priority-based model routing in 3 bullets.',
-  attemptTimeoutMs: 12000,
+  prompt: 'Explain fallback routing in two short bullets.',
 });
 
 console.log(result.text);
-console.log(result.target);
-console.log(result.attempts);
-console.log(result.usage);
+console.log('selected:', result.target.name);
+console.log('attempts:', result.attempts);
+console.log('usage:', result.usage);
 ```
 
-With `debug: true`, the router writes `attempt:start`, `attempt:success`, and `attempt:failure` events to the console while still calling your custom hooks.
+Replace the example model IDs with models available to your provider account. Provider catalogs and pricing change independently of this package.
 
-When the selected provider returns usage data through the AI SDK, the router exposes it on `result.usage`. The normalized shape includes fields such as `inputTokens`, `outputTokens`, `totalTokens`, `reasoningTokens`, and `cachedInputTokens`.
+## Why Use It?
 
-## Basic Mental Model
+Use `prio-llm-router` when you want:
 
-There are two separate layers:
+- deterministic fallback across model IDs, providers, or local gateways
+- free-first or cost-aware chains that are visible in application config
+- one typed API for `generateText` and `streamText`
+- per-request chains for different workloads
+- attempt timeouts, attempt history, and telemetry hooks
+- a small library inside your Node.js process instead of a hosted gateway
 
-- `providers`: named credentials and transport settings
-- `models`: named routing targets that point to a provider and a concrete model id
+Choose a full AI gateway or orchestration framework instead if you need load balancing, managed key pools, health-based routing, circuit breakers, caching, budgets, guardrails, or a control plane. Those features are intentionally outside this package.
 
-Your app sends requests to the router using model target names, not raw provider config.
+## How Routing Works
 
-If you prefer shorter model references, providers may also expose a `prefix` such as `or`, and model targets may then omit `provider` and use `model: 'or:google/gemma-4-31b-it:free'` instead.
+For non-streaming calls, the router:
 
-There is also an additive builder layer for source-centric setup:
+1. Uses `request.chain`, then `defaultChain`, then enabled targets sorted by ascending `priority`.
+2. Calls one target at a time.
+3. Returns immediately when a target completes successfully.
+4. Records an execution error or attempt timeout and tries the next target.
+5. Throws `AllModelsFailedError` with every failed attempt if the chain is exhausted.
 
-- `createLlmConnection(...)`
-- `createLlmSource(...)`
-- `createOpenRouterConnection(...)`
-- `createOpenRouterFreeSource(...)`
-- `createOpenAICompatibleConnection(...)`
+Targets with the same priority keep their declaration order. Disabled targets and targets belonging to disabled providers are skipped in the implicit priority chain.
 
-This is the preferred path when you want to mark a source as strict `free`.
+### What Counts As Failure?
 
-## Strict Free Sources
+Fallback is triggered by a thrown provider/AI SDK error or an `AttemptTimeoutError`. It is not triggered by output quality.
 
-Strict `free` mode is intentionally narrow.
+| Outcome | Router behavior |
+| --- | --- |
+| Provider rejects, rate-limits, times out, or throws | Record failure and try the next target |
+| `generateText` returns empty, malformed, off-topic, or schema-invalid text without throwing | Treat the attempt as successful |
+| Caller aborts the request | Stop the whole request; do not continue fallback |
+| Every target fails | Throw `AllModelsFailedError` |
+| A stream completes before emitting text | Record `EmptyStreamError` and try the next target |
+| A stream fails before its first text chunk | Try the next target |
+| A stream fails after its first text chunk | Surface the error; do not mix models |
 
-It exists only where the package can prevent paid usage from the request shape alone. Today that means:
+If validity matters, validate `result.text` in your application. See [Structured Output And Validation](#structured-output-and-validation).
 
-- only `openrouter`
-- only explicit model ids that end in `:free`
+## Multiple Providers
 
-Example:
+Providers hold credentials and transport settings. Model targets point to providers and define routing order.
+
+```ts
+const router = createLlmRouter({
+  providers: [
+    {
+      name: 'groq',
+      type: 'groq',
+      auth: { mode: 'single', apiKey: process.env.GROQ_API_KEY! },
+    },
+    {
+      name: 'openai',
+      type: 'openai',
+      auth: { mode: 'single', apiKey: process.env.OPENAI_API_KEY! },
+    },
+  ],
+  models: [
+    {
+      name: 'fast-first',
+      provider: 'groq',
+      model: 'openai/gpt-oss-20b',
+      priority: 10,
+    },
+    {
+      name: 'quality-backup',
+      provider: 'openai',
+      model: 'gpt-4.1-mini',
+      priority: 100,
+    },
+  ],
+  defaultChain: ['fast-first', 'quality-backup'],
+});
+```
+
+Use `chain` to override the order for one request:
+
+```ts
+const result = await router.generateText({
+  prompt: 'Write a concise release note.',
+  chain: ['quality-backup', 'fast-first'],
+});
+```
+
+Chain values are target names, not provider names. Duplicate chain entries are tried only once.
+
+## Provider Prefixes
+
+Prefixes are optional shorthand for apps that build chains from configuration or environment variables:
+
+```ts
+const router = createLlmRouter({
+  providers: [
+    {
+      name: 'openrouter',
+      prefix: 'or',
+      type: 'openrouter',
+      auth: { mode: 'single', apiKey: process.env.OPENROUTER_API_KEY! },
+    },
+  ],
+  models: [
+    {
+      name: 'free-model',
+      model: 'or:google/gemma-3-27b-it:free',
+      priority: 10,
+      tier: 'free',
+    },
+  ],
+});
+
+await router.generateText({
+  prompt: 'Answer briefly.',
+  chain: ['or:google/gemma-3-27b-it:free'],
+});
+```
+
+An exact configured target-name match wins before prefix resolution. A prefixed request-chain entry may also reference a model that was not declared in `models`; the router resolves it through the matching provider prefix.
+
+## Free-First Chains
+
+`tier: 'free'` is metadata for routing records and telemetry. It does not inspect billing or prevent a provider from charging.
+
+For a config-time free-only guard, use `createOpenRouterFreeSource`. Strict free sources currently accept only OpenRouter model IDs ending in `:free` or the `openrouter/free` alias:
 
 ```ts
 import {
+  createLlmRouter,
   createOpenRouterConnection,
   createOpenRouterFreeSource,
-  createLlmRouter,
 } from '@yadimon/prio-llm-router';
 
 const openRouter = createOpenRouterConnection({
-  name: 'openrouter-main',
-  auth: {
-    mode: 'single',
-    apiKey: process.env.OPENROUTER_API_KEY!,
-  },
-  appName: 'prio-llm-router-demo',
-  appUrl: 'https://example.com',
+  name: 'openrouter',
+  auth: { mode: 'single', apiKey: process.env.OPENROUTER_API_KEY! },
 });
 
 const router = createLlmRouter({
   sources: [
     createOpenRouterFreeSource(openRouter, {
-      name: 'kimi-free',
-      model: 'moonshotai/kimi-k2:free',
+      name: 'free-model',
+      model: 'google/gemma-3-27b-it:free',
       priority: 10,
     }),
   ],
 });
 ```
 
-The package rejects strict `free` sources for providers whose free status depends on account plan or billing setup, such as `google`, `groq`, `mistral`, or `cohere`.
+Other providers may offer free quotas, but that depends on account state and cannot be guaranteed from the request shape.
 
-## Explicit Request Chains
+## Timeouts, Retries, And Abort
 
-If you want per-request routing, pass a chain of configured model target names:
+Set a default timeout for each target attempt:
 
 ```ts
-const result = await router.generateText({
-  prompt: 'Write a terse release note.',
-  chain: ['trinity-free', 'groq-oss', 'gpt-4.1-paid'],
+const router = createLlmRouter({
+  providers,
+  models,
+  defaultAttemptTimeoutMs: 12_000,
+  defaultProviderMaxRetries: 0,
 });
 ```
 
-The chain values are usually target names from the `models` config.
-
-If a chain entry does not match an exact configured target name, the router also checks for a provider-prefix model ref such as `or:google/gemma-4-31b-it:free`. Exact target-name matches always win before prefix fallback is attempted.
-
-If `chain` is not provided, the router uses:
-
-- `defaultChain` from setup if present
-- otherwise all enabled model targets sorted by ascending `priority`
-
-## Provider Options
-
-`providerOptions` are passed through to Vercel AI SDK `generateText` and `streamText` calls for provider-specific controls:
+Override it for one request and optionally bound the whole operation:
 
 ```ts
-const result = await router.generateText({
+await router.generateText({
   prompt: 'Answer briefly.',
-  chain: ['google-flash'],
-  providerOptions: {
-    google: {
-      thinkingConfig: {
-        thinkingBudget: 0,
-      },
-    },
-  },
+  attemptTimeoutMs: 8_000,
+  providerMaxRetries: 0,
+  abortSignal: AbortSignal.timeout(20_000),
 });
 ```
 
-For Gemini 2.5 Flash, `thinkingBudget: 0` disables thinking. These options are provider-specific, so check the matching AI SDK provider documentation for the accepted shape.
+- `attemptTimeoutMs` bounds one target before fallback.
+- `providerMaxRetries` controls AI SDK retries inside that target. It defaults to `0` in this package.
+- `abortSignal` cancels the complete operation and stops fallback.
+- There is no attempt timeout unless you configure one.
 
-## Messages Instead of Prompt
+With several targets, total latency can approach the sum of their attempt timeouts. See [Production Guidance](https://github.com/yadimon/prio-llm-router/blob/main/docs/production.md) for timeout and retry recommendations.
 
-```ts
-const result = await router.generateText({
-  system: 'Be concise.',
-  messages: [
-    { role: 'user', content: [{ type: 'text', text: 'Explain fallback routing.' }] },
-  ],
-});
-```
+## Streaming
 
-## Streaming With First-Chunk Fallback
-
-For chat-style UX you can use `streamText`.
-
-The router behavior is intentionally strict:
-
-- before the first text chunk arrives, it may fall back to the next target
-- once the first text chunk has been emitted, the model is locked in
-- if the selected stream later fails, the error is surfaced and no further fallback happens
+Streaming fallback is allowed only before the first text chunk. After a chunk is selected, the router never switches models mid-answer.
 
 ```ts
 const stream = await router.streamText({
-  prompt: 'Explain this system in short sentences.',
-  chain: ['trinity-free', 'groq-oss', 'gpt-4.1-paid'],
-  firstChunkTimeoutMs: 2500,
+  prompt: 'Explain first-chunk fallback.',
+  chain: ['fast-first', 'quality-backup'],
+  firstChunkTimeoutMs: 2_500,
 });
 
 for await (const chunk of stream.textStream) {
@@ -270,279 +266,154 @@ for await (const chunk of stream.textStream) {
 }
 
 const final = await stream.final;
-console.log(final.target.name);
+console.log(final.target.name, final.usage);
 ```
 
-Use `firstChunkTimeoutMs` when you want "switch if nothing starts quickly enough" behavior. If you omit it, the router waits indefinitely for the first chunk of the current target.
+Consume `textStream` before awaiting `final`, or call `await stream.consumeStream()`. A stream can be consumed only once. Read [Streaming Semantics](https://github.com/yadimon/prio-llm-router/blob/main/docs/streaming.md) for the full contract.
 
-You can also use `attemptTimeoutMs` as the shared timeout for normal requests and streaming first-chunk fallback.
+## Structured Output And Validation
 
-This makes the behavior safe for chat UIs:
+The current public API routes text generation. It does not expose the AI SDK `output`/schema option or automatically retry schema-invalid output.
 
-- no silent model switch after the answer has already started
-- no mixed output from multiple models in one response
-- deterministic fallback only during the "nothing has started yet" phase
-
-## Configuration Model
-
-### Providers
-
-Providers are named credentials plus provider type:
+Validate after generation and decide explicitly whether a semantic failure should retry the same model or move to another target:
 
 ```ts
-{
-  name: 'groq-main',
-  type: 'groq',
-  auth: {
-    mode: 'single',
-    apiKey: process.env.GROQ_API_KEY!,
+import { z } from 'zod';
+
+const Answer = z.object({ summary: z.string(), tags: z.array(z.string()) });
+const chain = ['fast-first', 'quality-backup'];
+
+let parsed: z.infer<typeof Answer> | undefined;
+
+for (const target of chain) {
+  try {
+    const result = await router.generateText({
+      prompt: 'Return JSON with summary and tags.',
+      chain: [target],
+    });
+
+    const candidate = Answer.safeParse(JSON.parse(result.text));
+    if (candidate.success) {
+      parsed = candidate.data;
+      break;
+    }
+  } catch {
+    // Provider errors and invalid JSON both advance this app-level chain.
+  }
+}
+
+if (!parsed) throw new Error('No model returned valid structured output.');
+```
+
+The compact example handles provider errors and invalid JSON alike. In production, record those cases separately so availability failures and schema failures remain distinguishable.
+
+## Messages And Provider Options
+
+Use either `prompt` or AI SDK `ModelMessage[]`:
+
+```ts
+await router.generateText({
+  system: 'Be concise.',
+  messages: [{ role: 'user', content: 'Explain deterministic fallback.' }],
+  temperature: 0.2,
+  maxOutputTokens: 300,
+});
+```
+
+Multimodal message parts can pass through when the selected AI SDK provider and model support them. The package has no dedicated image, audio, embedding, tool-calling, or object-generation methods.
+
+Provider-specific AI SDK options pass through unchanged:
+
+```ts
+await router.generateText({
+  prompt: 'Answer briefly.',
+  chain: ['google-flash'],
+  providerOptions: {
+    google: {
+      thinkingConfig: { thinkingBudget: 0 },
+    },
   },
-}
-```
-
-Today the auth mode is `single`. The type layout is intentionally future-friendly so provider key pools or key-priority strategies can be added later without changing how models reference providers.
-
-Common provider-level fields:
-
-- `name`
-- `prefix`
-- `type`
-- `auth`
-- `enabled`
-- `baseURL`
-- `headers`
-
-### Models
-
-Models are named routing targets:
-
-```ts
-{
-  name: 'trinity-free',
-  provider: 'openrouter-main',
-  model: 'arcee-ai/trinity-large:free',
-  priority: 10,
-  tier: 'free',
-}
-```
-
-Or, when the referenced provider config declares `prefix: 'or'`:
-
-```ts
-{
-  name: 'gemma-free',
-  model: 'or:google/gemma-4-31b-it:free',
-  priority: 10,
-  tier: 'free',
-}
-```
-
-The router either:
-
-- uses `request.chain` if provided
-- uses `defaultChain` from setup if provided
-- otherwise sorts enabled targets by ascending `priority`
-
-Common model-level fields:
-
-- `name`
-- `provider`
-- `model`
-- `enabled`
-- `priority`
-- `tier`
-- `metadata`
-
-`provider` is required for the standard object form. If `model` uses a configured provider prefix like `or:...`, the router resolves the provider from that prefix instead.
-
-## Attempt Timeouts
-
-Use `attemptTimeoutMs` on a request when a single model attempt should fail and fall through after a fixed time:
-
-```ts
-const result = await router.generateText({
-  prompt: 'Write a short answer.',
-  attemptTimeoutMs: 8000,
 });
 ```
 
-Or set a router-level default:
+Check the matching AI SDK provider documentation for accepted option keys.
+
+## Errors And Observability
 
 ```ts
+import {
+  AllModelsFailedError,
+  createLlmRouter,
+} from '@yadimon/prio-llm-router';
+
 const router = createLlmRouter({
-  defaultAttemptTimeoutMs: 12000,
   providers,
   models,
+  hooks: {
+    onAttemptFailure(attempt) {
+      telemetry.record('llm.attempt.failed', attempt);
+    },
+  },
 });
+
+try {
+  await router.generateText({ prompt: 'Hello' });
+} catch (error) {
+  if (error instanceof AllModelsFailedError) {
+    console.error(error.attempts);
+  }
+  throw error;
+}
 ```
 
-Timeouts become normal failed attempts with `error.name === 'AttemptTimeoutError'`, so they appear in `attempts` and fire `onAttemptFailure(...)` like other execution failures.
-
-## Debug Mode And Hooks
-
-Use `debug: true` when you want the router to mirror attempt hooks to the console during development.
-
-```ts
-const router = createLlmRouter({
-  debug: true,
-  providers,
-  models,
-});
-```
-
-That debug mode is intentionally small:
-
-- `console.log('[prio-llm-router] attempt:start', attempt)`
-- `console.log('[prio-llm-router] attempt:success', attempt)`
-- `console.error('[prio-llm-router] attempt:failure', attempt)`
-
-If you also pass `hooks`, both stay active. Debug mode does not replace custom telemetry.
+Every result includes the selected `target`, ordered `attempts`, `finishReason`, optional normalized `usage`, optional `warnings`, and the raw AI SDK result. `debug: true` mirrors attempt events to the console; hooks remain active.
 
 ## Supported Providers
 
+- `anthropic`
+- `cohere`
+- `deepseek`
 - `google`
-- `openrouter`
 - `groq`
 - `mistral`
-- `cohere`
-- `perplexity`
-- `xai`
-- `togetherai`
 - `openai`
-- `anthropic`
-- `deepseek`
-- `vercel`
-- `openai-compatible`
+- `openrouter`
+- `perplexity`
+- `togetherai`
+- `xai`
+- `vercel` (Vercel AI Gateway)
+- `openai-compatible` (local runtimes, proxies, and custom gateways)
 
-These built-in types focus on API-key-based providers that map cleanly to the Vercel AI SDK. Use `vercel` for Vercel AI Gateway and `openai-compatible` for generic OpenAI-style gateways and proxies.
+`openai-compatible` requires `baseURL` and may use an empty API key for a local backend that does not require authentication. See [Local Providers](https://github.com/yadimon/prio-llm-router/blob/main/docs/local-providers.md).
 
-Use `vercel` when you want an explicit Vercel AI Gateway transport in router config:
+## Documentation And Examples
 
-```ts
-{
-  name: 'vercel-main',
-  type: 'vercel',
-  auth: {
-    mode: 'single',
-    apiKey: process.env.AI_GATEWAY_API_KEY!,
-  },
-}
-```
-
-Use `openai-compatible` when you have an OpenAI-style endpoint that is not covered by a first-party adapter:
-
-```ts
-{
-  name: 'my-proxy',
-  type: 'openai-compatible',
-  baseURL: 'https://my-proxy.example.com/v1',
-  providerLabel: 'my-proxy',
-  auth: {
-    mode: 'single',
-    apiKey: process.env.MY_PROXY_API_KEY!,
-  },
-}
-```
-
-`openai-compatible` is also the one built-in provider type that may use an empty API key for local or internal backends. When the key is empty, the router allows the config and creates the adapter without an `Authorization` header.
-
-If you prefer typed helpers over raw provider objects, use:
-
-```ts
-import {
-  createOpenAICompatibleConnection,
-  createOpenRouterConnection,
-  createOpenRouterFreeSource,
-} from '@yadimon/prio-llm-router';
-```
-
-This also covers local OpenAI-compatible runtimes such as LM Studio, Ollama, or other local gateways.
-
-Example for LM Studio running locally on `http://127.0.0.1:1234/v1`:
-
-Before using this setup, make sure LM Studio's local server is running with the OpenAI-compatible API enabled.
-
-```ts
-import {
-  createLlmRouter,
-  createOpenAICompatibleConnection,
-} from '@yadimon/prio-llm-router';
-
-const router = createLlmRouter({
-  providers: [
-    createOpenAICompatibleConnection({
-      name: 'lm-studio-local',
-      baseURL: 'http://127.0.0.1:1234/v1',
-      providerLabel: 'lm-studio',
-      auth: {
-        mode: 'single',
-        apiKey: '',
-      },
-    }).provider,
-  ],
-  models: [
-    {
-      name: 'local-qwen',
-      provider: 'lm-studio-local',
-      model: 'qwen2.5-7b-instruct',
-      priority: 10,
-    },
-  ],
-});
-
-const result = await router.generateText({
-  prompt: 'Describe this local LM Studio setup in one sentence.',
-});
-
-console.log(result.text);
-```
-
-Notes:
-
-- for LM Studio, enable the OpenAI-compatible local API before using this config
-- the local server still needs to expose an OpenAI-compatible HTTP API
-- the package allows an empty `apiKey` for `openai-compatible`, so local runtimes can use `''` when they do not require auth
-- the `model` value must match the local model name exposed by your runtime
-
-For a focused local-setup guide, see [Local Providers](./docs/local-providers.md).
-
-## Error Model
-
-If every target fails, the router throws `AllModelsFailedError`.
-
-That error includes:
-
-- `attempts`: all failed attempts in execution order
-- `cause`: the last underlying error
-
-This makes it straightforward to log or surface detailed fallback history.
-
-For streaming requests:
-
-- fallback is allowed only before the first emitted text chunk
-- after the stream starts, later errors are surfaced directly
-- `stream.final` resolves to the final aggregated result when the stream completes successfully
+- [Configuration](https://github.com/yadimon/prio-llm-router/blob/main/docs/configuration.md) — all provider, model, source, timeout, and prefix fields
+- [Production Guidance](https://github.com/yadimon/prio-llm-router/blob/main/docs/production.md) — retries, latency, cost, validation, and telemetry
+- [Troubleshooting](https://github.com/yadimon/prio-llm-router/blob/main/docs/troubleshooting.md) — common routing and streaming surprises
+- [Streaming Semantics](https://github.com/yadimon/prio-llm-router/blob/main/docs/streaming.md) — first-chunk selection and failure behavior
+- [Local Providers](https://github.com/yadimon/prio-llm-router/blob/main/docs/local-providers.md) — LM Studio and OpenAI-compatible endpoints
+- [Current Free Possibilities](https://github.com/yadimon/prio-llm-router/blob/main/docs/current-free-possibilities.md) — what strict free mode can and cannot guarantee
+- [Examples](https://github.com/yadimon/prio-llm-router/tree/main/examples) — runnable TypeScript examples
+- [Architecture](https://github.com/yadimon/prio-llm-router/blob/main/docs/architecture.md) — internal boundaries and extension points
 
 ## Public API
 
-Main exports:
-
-- `createLlmRouter`
-- `PrioLlmRouter`
-- `createDefaultTextGenerationExecutor`
-- `AttemptTimeoutError`
-- `createOpenRouterConnection`
-- `createOpenRouterFreeSource`
-- `createOpenAICompatibleConnection`
-- `AllModelsFailedError`
-- `RouterConfigurationError`
-
 Main methods:
 
-- `router.generateText(...)`
-- `router.streamText(...)`
+- `router.generateText(request)`
+- `router.streamText(request)`
 - `router.listProviders()`
 - `router.listModels()`
+
+Main exports:
+
+- `createLlmRouter`, `PrioLlmRouter`
+- `createLlmConnection`, `createLlmSource`
+- `createOpenRouterConnection`, `createOpenRouterFreeSource`
+- `createOpenAICompatibleConnection`
+- `AllModelsFailedError`, `AttemptTimeoutError`, `RouterConfigurationError`
+- `createDefaultTextGenerationExecutor`
 
 ## Development
 
@@ -551,21 +422,10 @@ npm install
 npm run check
 ```
 
-For a local packed-artifact smoke test against real provider keys from `scripts/e2e/.env`, run:
+For a packed-artifact smoke test against credentials in `scripts/e2e/.env`:
 
 ```bash
 npm run test:e2e:real
 ```
 
-Repository layout:
-
-- [src](./src)
-- [tests](./tests)
-- [examples](./examples)
-- [docs](./docs)
-
-## Notes
-
-- The routing logic is deliberately separate from provider execution logic.
-- OpenRouter request headers `HTTP-Referer` and `X-Title` can be set via `appUrl` and `appName`.
-- Examples in this repository import from `../src/index.js` for local development. In external projects, import from `@yadimon/prio-llm-router`.
+Repository examples import from `../src/index.js` for local development. In your application, import from `@yadimon/prio-llm-router`.
