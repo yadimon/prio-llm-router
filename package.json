@@ -1,6 +1,6 @@
 {
   "name": "@yadimon/prio-llm-router",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "Deterministic priority and fallback routing for text generation across Vercel AI SDK providers.",
   "type": "module",
   "main": "./dist/index.cjs",
