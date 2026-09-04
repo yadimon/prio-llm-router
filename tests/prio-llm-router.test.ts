@@ -1794,6 +1794,163 @@ describe('PrioLlmRouter', () => {
   );
 
   it(
+    'surfaces a failing provider cancellation when the failure hook succeeded',
+    { timeout: 1000 },
+    async () => {
+      const textStream: AsyncIterable<string> = {
+        [Symbol.asyncIterator]: () => ({
+          next: async (): Promise<IteratorResult<string>> => {
+            await Promise.resolve();
+            return { done: false, value: 'chunk' };
+          },
+          return: async (): Promise<IteratorResult<string>> => {
+            await Promise.resolve();
+            throw new Error('provider cancellation failed');
+          },
+        }),
+      };
+
+      const router = createTwoTargetRouter(
+        createExecutor(
+          async () => {
+            await Promise.resolve();
+            return { text: 'unused', finishReason: 'stop', raw: {} };
+          },
+          async () => {
+            await Promise.resolve();
+            return {
+              textStream,
+              finishReason: Promise.resolve('stop'),
+              usage: Promise.resolve(undefined),
+              warnings: Promise.resolve(undefined),
+              raw: {},
+            };
+          },
+        ),
+      );
+
+      const streamResult = await router.streamText({ prompt: 'Ping' });
+
+      await expect(
+        (async () => {
+          for await (const chunk of streamResult.textStream) {
+            void chunk;
+            break;
+          }
+        })(),
+      ).rejects.toThrow('provider cancellation failed');
+
+      await expect(streamResult.final).rejects.toThrow(
+        'The stream was closed before completion.',
+      );
+    },
+  );
+
+  it(
+    'rethrows the original error when the provider iterator has no throw method',
+    { timeout: 1000 },
+    async () => {
+      const textStream: AsyncIterable<string> = {
+        [Symbol.asyncIterator]: () => ({
+          next: async (): Promise<IteratorResult<string>> => {
+            await Promise.resolve();
+            return { done: false, value: 'chunk' };
+          },
+        }),
+      };
+
+      const router = createTwoTargetRouter(
+        createExecutor(
+          async () => {
+            await Promise.resolve();
+            return { text: 'unused', finishReason: 'stop', raw: {} };
+          },
+          async () => {
+            await Promise.resolve();
+            return {
+              textStream,
+              finishReason: Promise.resolve('stop'),
+              usage: Promise.resolve(undefined),
+              warnings: Promise.resolve(undefined),
+              raw: {},
+            };
+          },
+        ),
+      );
+
+      const streamResult = await router.streamText({ prompt: 'Ping' });
+      const iterator = streamResult.textStream[Symbol.asyncIterator]();
+
+      await iterator.next();
+
+      await expect(
+        iterator.throw?.(new Error('consumer aborted')),
+      ).rejects.toThrow('consumer aborted');
+
+      await expect(streamResult.final).rejects.toThrow('consumer aborted');
+    },
+  );
+
+  it(
+    'still throws into the underlying iterator when the attempt failure hook throws',
+    { timeout: 1000 },
+    async () => {
+      const iteratorThrow = vi.fn(async (): Promise<IteratorResult<string>> => {
+        await Promise.resolve();
+        return { done: true, value: undefined };
+      });
+
+      const textStream: AsyncIterable<string> = {
+        [Symbol.asyncIterator]: () => ({
+          next: async (): Promise<IteratorResult<string>> => {
+            await Promise.resolve();
+            return { done: false, value: 'chunk' };
+          },
+          throw: iteratorThrow,
+        }),
+      };
+
+      const router = createTwoTargetRouter(
+        createExecutor(
+          async () => {
+            await Promise.resolve();
+            return { text: 'unused', finishReason: 'stop', raw: {} };
+          },
+          async () => {
+            await Promise.resolve();
+            return {
+              textStream,
+              finishReason: Promise.resolve('stop'),
+              usage: Promise.resolve(undefined),
+              warnings: Promise.resolve(undefined),
+              raw: {},
+            };
+          },
+        ),
+        {
+          hooks: {
+            onAttemptFailure: () => {
+              throw new Error('attempt failure hook exploded');
+            },
+          },
+        },
+      );
+
+      const streamResult = await router.streamText({ prompt: 'Ping' });
+      const iterator = streamResult.textStream[Symbol.asyncIterator]();
+
+      await iterator.next();
+
+      await expect(
+        iterator.throw?.(new Error('consumer aborted')),
+      ).rejects.toThrow('attempt failure hook exploded');
+
+      expect(iteratorThrow).toHaveBeenCalledTimes(1);
+      await expect(streamResult.final).rejects.toThrow();
+    },
+  );
+
+  it(
     'still surfaces a rejected stream metadata promise to consumers awaiting final',
     { timeout: 1000 },
     async () => {

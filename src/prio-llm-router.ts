@@ -1015,6 +1015,22 @@ function observeStreamMetadataRejections(
   void streamResult.warnings.catch(() => undefined);
 }
 
+/**
+ * Run the failure hook, capturing rather than propagating a throw so the
+ * caller can still cancel the underlying provider stream before surfacing it.
+ */
+function runFailureHook(
+  onFailure: (error: unknown) => void,
+  error: unknown,
+): { thrown: unknown } | undefined {
+  try {
+    onFailure(error);
+    return undefined;
+  } catch (thrown) {
+    return { thrown };
+  }
+}
+
 function createRouterTextStreamIterator(options: {
   firstChunk: string;
   iterator: AsyncIterator<string>;
@@ -1069,14 +1085,23 @@ function createRouterTextStreamIterator(options: {
     async return(): Promise<IteratorResult<string>> {
       finished = true;
 
+      const hookFailure = runFailureHook(onFailure, createStreamClosedEarlyError());
+
       try {
-        onFailure(createStreamClosedEarlyError());
-      } finally {
         // A throwing failure hook must not skip cancellation of the underlying
-        // provider stream. The hook error still propagates to the caller.
+        // provider stream.
         if (typeof iterator.return === 'function') {
           await iterator.return();
         }
+      } catch (cancelError) {
+        // A failed cancellation must not mask why the stream was closed.
+        if (!hookFailure) {
+          throw cancelError;
+        }
+      }
+
+      if (hookFailure) {
+        throw hookFailure.thrown;
       }
 
       return {
@@ -1086,10 +1111,22 @@ function createRouterTextStreamIterator(options: {
     },
     async throw(error?: unknown): Promise<IteratorResult<string>> {
       finished = true;
-      onFailure(error);
 
-      if (typeof iterator.throw === 'function') {
-        return iterator.throw(error);
+      // Same ordering guarantee as return(): a throwing hook must not skip
+      // cancellation of the underlying provider stream.
+      const hookFailure = runFailureHook(onFailure, error);
+      const cancelled =
+        typeof iterator.throw === 'function' ? iterator.throw(error) : undefined;
+
+      if (hookFailure) {
+        // Let cancellation settle, then surface the hook error, matching
+        // return(). Its own rejection must not mask the hook failure.
+        await Promise.resolve(cancelled).catch(() => undefined);
+        throw hookFailure.thrown;
+      }
+
+      if (cancelled !== undefined) {
+        return cancelled;
       }
 
       throw error;
