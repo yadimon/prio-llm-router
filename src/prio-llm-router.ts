@@ -254,6 +254,8 @@ export class PrioLlmRouter {
           },
         });
 
+        observeStreamMetadataRejections(streamResult);
+
         const iterator = streamResult.textStream[Symbol.asyncIterator]();
         const firstChunk = await this.waitForFirstChunk({
           iterator,
@@ -999,6 +1001,20 @@ function createFailedAttemptRecord(
   };
 }
 
+function observeStreamMetadataRejections(
+  streamResult: ExecuteStreamTextTargetResult,
+): void {
+  // An attempt can be abandoned long before its metadata is read: a first-chunk
+  // timeout, an empty stream, or a finalization that exits early all leave
+  // these promises unread. Executors are public API, so this guarantee has to
+  // hold for any executor rather than only the built-in one. Attaching a no-op
+  // handler does not consume the rejection - callers awaiting these promises
+  // still observe the original error.
+  void streamResult.finishReason.catch(() => undefined);
+  void streamResult.usage.catch(() => undefined);
+  void streamResult.warnings.catch(() => undefined);
+}
+
 function createRouterTextStreamIterator(options: {
   firstChunk: string;
   iterator: AsyncIterator<string>;
@@ -1052,10 +1068,15 @@ function createRouterTextStreamIterator(options: {
     },
     async return(): Promise<IteratorResult<string>> {
       finished = true;
-      onFailure(createStreamClosedEarlyError());
 
-      if (typeof iterator.return === 'function') {
-        await iterator.return();
+      try {
+        onFailure(createStreamClosedEarlyError());
+      } finally {
+        // A throwing failure hook must not skip cancellation of the underlying
+        // provider stream. The hook error still propagates to the caller.
+        if (typeof iterator.return === 'function') {
+          await iterator.return();
+        }
       }
 
       return {

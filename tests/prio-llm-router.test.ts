@@ -1642,4 +1642,198 @@ describe('PrioLlmRouter', () => {
       expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
     },
   );
+
+  it(
+    'does not report an unhandled rejection when a custom executor rejects the metadata of an abandoned attempt',
+    { timeout: 1000 },
+    async () => {
+      const unhandled: unknown[] = [];
+      const collectUnhandled = (reason: unknown): void => {
+        unhandled.push(reason);
+      };
+
+      process.on('unhandledRejection', collectUnhandled);
+
+      try {
+        const stream =
+          vi.fn<
+            (
+              input: ExecuteTextTargetInput,
+            ) => Promise<ExecuteStreamTextTargetResult>
+          >();
+
+        stream.mockImplementationOnce(async () => {
+          await Promise.resolve();
+          return {
+            textStream: singleUseStream(['late'], { delayMs: 50 }),
+            finishReason: Promise.reject(
+              new Error('custom executor finish reason failed'),
+            ),
+            usage: Promise.reject(new Error('custom executor usage failed')),
+            warnings: Promise.reject(
+              new Error('custom executor warnings failed'),
+            ),
+            raw: {},
+          };
+        });
+        stream.mockImplementationOnce(async () => {
+          await Promise.resolve();
+          return {
+            textStream: singleUseStream(['fallback', ' stream']),
+            finishReason: Promise.resolve('stop'),
+            usage: Promise.resolve(undefined),
+            warnings: Promise.resolve(undefined),
+            raw: {},
+          };
+        });
+
+        const router = createTwoTargetRouter(
+          createExecutor(async () => {
+            await Promise.resolve();
+            return {
+              text: 'unused',
+              finishReason: 'stop',
+              raw: {},
+            };
+          }, stream),
+        );
+
+        const streamResult = await router.streamText({
+          prompt: 'Ping',
+          firstChunkTimeoutMs: 10,
+        });
+
+        const chunks: string[] = [];
+        for await (const chunk of streamResult.textStream) {
+          chunks.push(chunk);
+        }
+
+        const final = await streamResult.final;
+
+        await flushUnhandledRejections();
+
+        expect(stream).toHaveBeenCalledTimes(2);
+        expect(streamResult.target.name).toBe('fallback-target');
+        expect(chunks.join('')).toBe('fallback stream');
+        expect(final.text).toBe('fallback stream');
+        expect(unhandled).toEqual([]);
+      } finally {
+        process.off('unhandledRejection', collectUnhandled);
+      }
+    },
+  );
+
+  it(
+    'still returns the underlying iterator when the attempt failure hook throws',
+    { timeout: 1000 },
+    async () => {
+      const iteratorReturn = vi.fn(async (): Promise<IteratorResult<string>> => {
+        await Promise.resolve();
+        return { done: true, value: undefined };
+      });
+
+      const textStream: AsyncIterable<string> = {
+        [Symbol.asyncIterator]: () => ({
+          next: async (): Promise<IteratorResult<string>> => {
+            await Promise.resolve();
+            return { done: false, value: 'chunk' };
+          },
+          return: iteratorReturn,
+        }),
+      };
+
+      const router = createTwoTargetRouter(
+        createExecutor(
+          async () => {
+            await Promise.resolve();
+            return {
+              text: 'unused',
+              finishReason: 'stop',
+              raw: {},
+            };
+          },
+          async () => {
+            await Promise.resolve();
+            return {
+              textStream,
+              finishReason: Promise.resolve('stop'),
+              usage: Promise.resolve(undefined),
+              warnings: Promise.resolve(undefined),
+              raw: {},
+            };
+          },
+        ),
+        {
+          hooks: {
+            onAttemptFailure: () => {
+              throw new Error('attempt failure hook exploded');
+            },
+          },
+        },
+      );
+
+      const streamResult = await router.streamText({ prompt: 'Ping' });
+
+      const received: string[] = [];
+
+      await expect(
+        (async () => {
+          for await (const chunk of streamResult.textStream) {
+            received.push(chunk);
+            break;
+          }
+        })(),
+      ).rejects.toThrow('attempt failure hook exploded');
+
+      await expect(streamResult.final).rejects.toThrow(
+        'The stream was closed before completion.',
+      );
+      expect(received).toEqual(['chunk']);
+      expect(iteratorReturn).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it(
+    'still surfaces a rejected stream metadata promise to consumers awaiting final',
+    { timeout: 1000 },
+    async () => {
+      const router = createTwoTargetRouter(
+        createExecutor(
+          async () => {
+            await Promise.resolve();
+            return {
+              text: 'unused',
+              finishReason: 'stop',
+              raw: {},
+            };
+          },
+          async () => {
+            await Promise.resolve();
+            return {
+              textStream: singleUseStream(['hello', ' world']),
+              finishReason: Promise.reject(new Error('metadata unavailable')),
+              usage: Promise.resolve(undefined),
+              warnings: Promise.resolve(undefined),
+              raw: {},
+            };
+          },
+        ),
+      );
+
+      const streamResult = await router.streamText({ prompt: 'Ping' });
+
+      const received: string[] = [];
+
+      await expect(
+        (async () => {
+          for await (const chunk of streamResult.textStream) {
+            received.push(chunk);
+          }
+        })(),
+      ).rejects.toThrow('metadata unavailable');
+
+      await expect(streamResult.final).rejects.toThrow('metadata unavailable');
+      expect(received.join('')).toBe('hello world');
+    },
+  );
 });

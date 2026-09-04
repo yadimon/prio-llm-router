@@ -109,10 +109,10 @@ class AiSdkTextGenerationExecutor implements TextGenerationExecutor {
       normalizeWarnings(value),
     );
 
-    // Callers may abandon an attempt (router fallback, first-chunk timeout)
-    // without ever reading these promises. The AI SDK rejects them on abort or
-    // missing output, so keep every rejection observed to avoid crashing the
-    // process with an unhandled rejection.
+    // The AI SDK rejects these on abort or missing output, and a caller using
+    // this executor directly may abandon a stream without ever reading them.
+    // The router guards every executor result independently, so this is the
+    // defence for direct consumers of the executor.
     void finishReason.catch(() => undefined);
     void usage.catch(() => undefined);
     void warnings.catch(() => undefined);
