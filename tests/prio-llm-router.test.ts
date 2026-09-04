@@ -1584,4 +1584,62 @@ describe('PrioLlmRouter', () => {
       expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
     },
   );
+
+  it(
+    'rejects the final promise when the attempt failure hook throws',
+    { timeout: 1000 },
+    async () => {
+      const controller = new AbortController();
+      const router = createTwoTargetRouter(
+        createExecutor(
+          async () => {
+            await Promise.resolve();
+            return {
+              text: 'unused',
+              finishReason: 'stop',
+              raw: {},
+            };
+          },
+          async ({ model }) => {
+            await Promise.resolve();
+            return {
+              textStream: singleUseStream(['hello'], {
+                errorAfterChunks: new Error('stream exploded'),
+              }),
+              finishReason: Promise.resolve('error'),
+              usage: Promise.resolve(undefined),
+              warnings: Promise.resolve(undefined),
+              raw: { model: model.name },
+            };
+          },
+        ),
+        {
+          hooks: {
+            onAttemptFailure: () => {
+              throw new Error('attempt failure hook exploded');
+            },
+          },
+        },
+      );
+
+      const streamResult = await router.streamText({
+        prompt: 'Ping',
+        abortSignal: controller.signal,
+      });
+
+      const received: string[] = [];
+
+      await expect(
+        (async () => {
+          for await (const chunk of streamResult.textStream) {
+            received.push(chunk);
+          }
+        })(),
+      ).rejects.toThrow('attempt failure hook exploded');
+
+      await expect(streamResult.final).rejects.toThrow('stream exploded');
+      expect(received.join('')).toBe('hello');
+      expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
+    },
+  );
 });

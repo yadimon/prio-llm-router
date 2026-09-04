@@ -386,9 +386,16 @@ export class PrioLlmRouter {
 
       const attemptRecord = createFailedAttemptRecord(pendingAttempt, error);
       attempts.push(attemptRecord);
-      this.hooks?.onAttemptFailure?.(attemptRecord);
-      cleanupAbortLink();
-      rejectFinal(error);
+
+      try {
+        this.hooks?.onAttemptFailure?.(attemptRecord);
+      } finally {
+        // A throwing hook must not leave `final` pending forever or leak the
+        // parent abort link. The hook error still propagates to the caller,
+        // while `final` keeps reporting the original stream failure.
+        cleanupAbortLink();
+        rejectFinal(error);
+      }
     };
 
     const wrappedStream: AsyncIterable<string> = {

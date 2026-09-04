@@ -9,10 +9,10 @@ export default defineConfig({
       // Ratchet set to the coverage currently produced by the suite so that
       // future changes cannot silently reduce it.
       thresholds: {
-        statements: 76,
-        branches: 62,
-        functions: 88,
-        lines: 76,
+        statements: 76.6,
+        branches: 62.8,
+        functions: 88.7,
+        lines: 76.5,
       },
     },
   },
