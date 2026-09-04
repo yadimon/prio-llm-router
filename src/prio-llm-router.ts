@@ -324,43 +324,58 @@ export class PrioLlmRouter {
       rejectFinal = reject;
     });
 
+    // Consumers may abandon the stream without awaiting `final` (for example by
+    // breaking out of `for await`). Keep the rejection observed internally so
+    // that callers who do await it still see the error, while callers who do
+    // not are never hit with an unhandled rejection.
+    void final.catch(() => undefined);
+
     const finalizeSuccess = async (): Promise<void> => {
       if (finalized) {
         return;
       }
       finalized = true;
 
-      const finishedAt = new Date();
-      const attemptRecord: AttemptRecord = {
-        ...pendingAttempt,
-        finishedAt,
-        durationMs: finishedAt.getTime() - pendingAttempt.startedAt.getTime(),
-        success: true,
-      };
+      try {
+        const finishedAt = new Date();
+        const attemptRecord: AttemptRecord = {
+          ...pendingAttempt,
+          finishedAt,
+          durationMs: finishedAt.getTime() - pendingAttempt.startedAt.getTime(),
+          success: true,
+        };
 
-      attempts.push(attemptRecord);
-      this.hooks?.onAttemptSuccess?.(attemptRecord);
+        attempts.push(attemptRecord);
+        this.hooks?.onAttemptSuccess?.(attemptRecord);
 
-      const result: RouterGenerateTextResult = {
-        text: textParts.join(''),
-        target: this.toResolvedTarget(model),
-        attempts: [...attempts],
-        finishReason: await streamResult.finishReason,
-        raw: streamResult.raw,
-      };
+        const result: RouterGenerateTextResult = {
+          text: textParts.join(''),
+          target: this.toResolvedTarget(model),
+          attempts: [...attempts],
+          finishReason: await streamResult.finishReason,
+          raw: streamResult.raw,
+        };
 
-      const usage = await streamResult.usage;
-      if (usage) {
-        result.usage = usage;
+        const usage = await streamResult.usage;
+        if (usage) {
+          result.usage = usage;
+        }
+
+        const warnings = await streamResult.warnings;
+        if (warnings) {
+          result.warnings = warnings;
+        }
+
+        cleanupAbortLink();
+        resolveFinal(result);
+      } catch (error) {
+        // `finalized` is already set, so `finalizeFailure` would short-circuit.
+        // Settle `final` and release the parent abort link here instead of
+        // leaving the promise pending forever.
+        cleanupAbortLink();
+        rejectFinal(error);
+        throw error;
       }
-
-      const warnings = await streamResult.warnings;
-      if (warnings) {
-        result.warnings = warnings;
-      }
-
-      cleanupAbortLink();
-      resolveFinal(result);
     };
 
     const finalizeFailure = (error: unknown): void => {

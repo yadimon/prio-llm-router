@@ -1,3 +1,5 @@
+import { getEventListeners } from 'node:events';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -11,6 +13,7 @@ import type {
   ExecuteStreamTextTargetResult,
   ExecuteTextTargetInput,
   ExecuteTextTargetResult,
+  RouterHooks,
   TextGenerationExecutor,
 } from '../src/index.js';
 
@@ -69,9 +72,17 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
+function flushUnhandledRejections(): Promise<void> {
+  return new Promise((resolve) => {
+    setImmediate(() => {
+      setImmediate(resolve);
+    });
+  });
+}
+
 function createTwoTargetRouter(
   executor: TextGenerationExecutor,
-  options: { defaultAttemptTimeoutMs?: number } = {},
+  options: { defaultAttemptTimeoutMs?: number; hooks?: RouterHooks } = {},
 ) {
   return createLlmRouter({
     ...options,
@@ -1461,4 +1472,116 @@ describe('PrioLlmRouter', () => {
     expect(streamResult.target.name).toBe('selected-stream');
     expect(streamResult.attempts).toHaveLength(0);
   });
+
+  it('does not report an unhandled rejection when the caller abandons the text stream without awaiting final', async () => {
+    const unhandled: unknown[] = [];
+    const collectUnhandled = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    const controller = new AbortController();
+
+    process.on('unhandledRejection', collectUnhandled);
+
+    try {
+      const router = createTwoTargetRouter(
+        createExecutor(
+          async () => {
+            await Promise.resolve();
+            return {
+              text: 'unused',
+              finishReason: 'stop',
+              raw: {},
+            };
+          },
+          async ({ model }) => {
+            await Promise.resolve();
+            return {
+              textStream: singleUseStream(['first', ' second', ' third']),
+              finishReason: Promise.resolve('stop'),
+              usage: Promise.resolve(undefined),
+              warnings: Promise.resolve(undefined),
+              raw: { model: model.name },
+            };
+          },
+        ),
+      );
+
+      const streamResult = await router.streamText({
+        prompt: 'Ping',
+        abortSignal: controller.signal,
+      });
+
+      const received: string[] = [];
+      for await (const chunk of streamResult.textStream) {
+        received.push(chunk);
+        break;
+      }
+
+      await flushUnhandledRejections();
+
+      expect(received).toEqual(['first']);
+      expect(unhandled).toEqual([]);
+      expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
+    } finally {
+      process.off('unhandledRejection', collectUnhandled);
+    }
+  });
+
+  it(
+    'rejects the final promise when the attempt success hook throws',
+    { timeout: 1000 },
+    async () => {
+      const controller = new AbortController();
+      const router = createTwoTargetRouter(
+        createExecutor(
+          async () => {
+            await Promise.resolve();
+            return {
+              text: 'unused',
+              finishReason: 'stop',
+              raw: {},
+            };
+          },
+          async ({ model }) => {
+            await Promise.resolve();
+            return {
+              textStream: singleUseStream(['hello', ' world']),
+              finishReason: Promise.resolve('stop'),
+              usage: Promise.resolve(undefined),
+              warnings: Promise.resolve(undefined),
+              raw: { model: model.name },
+            };
+          },
+        ),
+        {
+          hooks: {
+            onAttemptSuccess: () => {
+              throw new Error('attempt success hook exploded');
+            },
+          },
+        },
+      );
+
+      const streamResult = await router.streamText({
+        prompt: 'Ping',
+        abortSignal: controller.signal,
+      });
+
+      const received: string[] = [];
+
+      await expect(
+        (async () => {
+          for await (const chunk of streamResult.textStream) {
+            received.push(chunk);
+          }
+        })(),
+      ).rejects.toThrow('attempt success hook exploded');
+
+      await expect(streamResult.final).rejects.toThrow(
+        'attempt success hook exploded',
+      );
+      expect(received.join('')).toBe('hello world');
+      expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
+    },
+  );
 });

@@ -58,8 +58,31 @@ vi.mock('@openrouter/ai-sdk-provider', () => ({
 import {
   RouterConfigurationError,
   createDefaultTextGenerationExecutor,
+  createLlmRouter,
 } from '../src/index.js';
 import type { ExecuteTextTargetInput } from '../src/index.js';
+
+function chunkStream(chunks: string[], delayMs: number): AsyncIterable<string> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      for (const chunk of chunks) {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, delayMs);
+        });
+
+        yield chunk;
+      }
+    },
+  };
+}
+
+function flushUnhandledRejections(): Promise<void> {
+  return new Promise((resolve) => {
+    setImmediate(() => {
+      setImmediate(resolve);
+    });
+  });
+}
 
 describe('createDefaultTextGenerationExecutor', () => {
   beforeEach(() => {
@@ -372,5 +395,95 @@ describe('createDefaultTextGenerationExecutor', () => {
     ).rejects.toThrow(RouterConfigurationError);
 
     expect(mocks.vercelFactory).not.toHaveBeenCalled();
+  });
+
+  it('does not report an unhandled rejection when the router abandons a streaming attempt', async () => {
+    const unhandled: unknown[] = [];
+    const collectUnhandled = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+
+    process.on('unhandledRejection', collectUnhandled);
+
+    try {
+      mocks.streamText.mockImplementationOnce(() => ({
+        textStream: chunkStream(['late'], 50),
+        consumeStream: () => Promise.resolve(undefined),
+        finishReason: Promise.reject(
+          new Error('attempt aborted before finish reason'),
+        ),
+        totalUsage: Promise.reject(new Error('attempt aborted before usage')),
+        warnings: Promise.reject(new Error('attempt aborted before warnings')),
+      }));
+      mocks.streamText.mockImplementationOnce(() => ({
+        textStream: chunkStream(['fallback', ' stream'], 0),
+        consumeStream: () => Promise.resolve(undefined),
+        finishReason: Promise.resolve('stop'),
+        totalUsage: Promise.resolve({
+          inputTokens: 3,
+          outputTokens: 4,
+          totalTokens: 7,
+        }),
+        warnings: Promise.resolve(undefined),
+      }));
+
+      const router = createLlmRouter({
+        providers: [
+          {
+            name: 'openrouter-main',
+            type: 'openrouter',
+            auth: { mode: 'single', apiKey: 'openrouter-key' },
+          },
+          {
+            name: 'google-main',
+            type: 'google',
+            auth: { mode: 'single', apiKey: 'google-key' },
+          },
+        ],
+        models: [
+          {
+            name: 'slow-stream',
+            provider: 'openrouter-main',
+            model: 'moonshotai/kimi-k2:free',
+            priority: 10,
+          },
+          {
+            name: 'fast-stream',
+            provider: 'google-main',
+            model: 'gemini-2.5-flash-lite',
+            priority: 20,
+          },
+        ],
+        executor: createDefaultTextGenerationExecutor(),
+      });
+
+      const streamResult = await router.streamText({
+        prompt: 'Ping',
+        firstChunkTimeoutMs: 10,
+      });
+
+      const chunks: string[] = [];
+      for await (const chunk of streamResult.textStream) {
+        chunks.push(chunk);
+      }
+
+      const final = await streamResult.final;
+
+      await flushUnhandledRejections();
+
+      expect(streamResult.target.name).toBe('fast-stream');
+      expect(streamResult.attempts[0]?.error?.name).toBe('AttemptTimeoutError');
+      expect(chunks.join('')).toBe('fallback stream');
+      expect(final.text).toBe('fallback stream');
+      expect(final.finishReason).toBe('stop');
+      expect(final.usage).toEqual({
+        inputTokens: 3,
+        outputTokens: 4,
+        totalTokens: 7,
+      });
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', collectUnhandled);
+    }
   });
 });

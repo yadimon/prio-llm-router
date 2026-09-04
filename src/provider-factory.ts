@@ -99,20 +99,32 @@ class AiSdkTextGenerationExecutor implements TextGenerationExecutor {
 
     const result = streamText(call);
 
+    const finishReason = Promise.resolve(result.finishReason).then(
+      (value) => value ?? null,
+    );
+    const usage = Promise.resolve(result.totalUsage).then((value) =>
+      normalizeUsage(value),
+    );
+    const warnings = Promise.resolve(result.warnings).then((value) =>
+      normalizeWarnings(value),
+    );
+
+    // Callers may abandon an attempt (router fallback, first-chunk timeout)
+    // without ever reading these promises. The AI SDK rejects them on abort or
+    // missing output, so keep every rejection observed to avoid crashing the
+    // process with an unhandled rejection.
+    void finishReason.catch(() => undefined);
+    void usage.catch(() => undefined);
+    void warnings.catch(() => undefined);
+
     return {
       textStream: result.textStream,
       consumeStream: async () => {
         await result.consumeStream();
       },
-      finishReason: Promise.resolve(result.finishReason).then(
-        (value) => value ?? null,
-      ),
-      usage: Promise.resolve(result.totalUsage).then((value) =>
-        normalizeUsage(value),
-      ),
-      warnings: Promise.resolve(result.warnings).then((value) =>
-        normalizeWarnings(value),
-      ),
+      finishReason,
+      usage,
+      warnings,
       raw: result,
     };
   }
