@@ -102,6 +102,9 @@
     "typescript-eslint": "^8.58.0",
     "vitest": "^4.1.2"
   },
+  "overrides": {
+    "esbuild": "^0.28.2"
+  },
   "publishConfig": {
     "access": "public"
   }
