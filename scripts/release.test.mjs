@@ -40,6 +40,18 @@ describe('release workflow', () => {
     expect(calls.some((call) => call[0] === 'npm')).toBe(false);
   });
 
+  it('compares against origin/main only after fetching', () => {
+    const { calls, run } = recorder();
+    // origin/main matches HEAD until the fetch updates it, so a comparison made before
+    // the fetch would accept a stale remote ref and release on top of it.
+    const capture = (args) => ({
+      'rev-parse origin/main': ['same-sha', 'new-sha'][Number(calls.some((call) => call[1] === 'fetch'))]
+    })[args.join(' ')] ?? cleanMain(args);
+    expect(() => release('patch', { run, capture, readVersion: versionAfterBump(calls, '1.2.4') }))
+      .toThrow('Main differs from origin/main');
+    expect(calls.some((call) => call[0] === 'npm')).toBe(false);
+  });
+
   it('rejects a level that is not patch, minor or major', () => {
     const { calls, run } = recorder();
     expect(() => release('bogus', { run, capture: cleanMain })).toThrow('Expected patch, minor or major');
