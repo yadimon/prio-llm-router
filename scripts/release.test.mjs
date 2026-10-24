@@ -3,53 +3,65 @@ import { release } from './release.mjs';
 
 describe('release workflow', () => {
   const cleanMain = (args) => args[0] === 'branch' ? 'main' : args[0] === 'status' ? '' : 'same-sha';
-  // Reports the pre-bump version until `npm version` has run, so reading it too
-  // early shows up as the wrong version in the commit message and tag.
-  const versionAfterBump = (calls) => () => ['1.2.3', '1.2.4'][Number(calls.some((call) => call[1] === 'version'))];
-
-  it('checks before bumping and creates a conventional commit and explicit atomic tag push', () => {
+  // Lookup instead of branching, so a state that stops matching shows up as a failing
+  // test rather than as a silently skipped condition.
+  const captureOn = (overrides) => (args) => overrides[args.join(' ')] ?? cleanMain(args);
+  // Reports the pre-bump version until `npm version` has run, so reading it too early
+  // shows up as the wrong version in the commit message and tag.
+  const versionAfterBump = (calls, bumped) => () => ['0.0.0', bumped][Number(calls.some((call) => call[1] === 'version'))];
+  const recorder = () => {
     const calls = [];
-    release('patch', { run: (command, args) => calls.push([command, ...args]), capture: cleanMain, readVersion: versionAfterBump(calls) });
-    expect(calls).toContainEqual(['npm', 'run', 'check']);
-    expect(calls.findIndex((call) => call[2] === 'check')).toBeLessThan(calls.findIndex((call) => call[1] === 'version'));
-    expect(calls).toContainEqual(['npm', 'version', 'patch', '--no-git-tag-version']);
-    expect(calls).toContainEqual(['git', 'commit', '-m', 'chore(release): v1.2.4']);
-    expect(calls).toContainEqual(['git', 'tag', '-a', 'v1.2.4', '-m', 'Release v1.2.4']);
-    expect(calls.at(-1)).toEqual(['git', 'push', '--atomic', 'origin', 'HEAD:refs/heads/main', 'refs/tags/v1.2.4']);
-  });
+    return { calls, run: (command, args) => calls.push([command, ...args]) };
+  };
 
-  it.each(['branch', 'dirty', 'behind'])('stops before changing versions on %s state', (state) => {
-    const calls = [];
-    const capture = (args) => {
-      if (state === 'branch' && args[0] === 'branch') return 'feature';
-      if (state === 'dirty' && args[0] === 'status') return ' M src/index.ts';
-      if (state === 'behind' && args[1] === 'origin/main') return 'new-sha';
-      return cleanMain(args);
-    };
-    expect(() => release('patch', { run: (command, args) => calls.push([command, ...args]), capture })).toThrow();
+  it.each([['patch', '1.2.4'], ['minor', '1.3.0'], ['major', '2.0.0']])(
+    'runs the exact %s release sequence', (level, version) => {
+      const { calls, run } = recorder();
+      release(level, { run, capture: cleanMain, readVersion: versionAfterBump(calls, version) });
+      expect(calls).toEqual([
+        ['git', 'fetch', 'origin', 'main', '--quiet'],
+        ['npm', 'run', 'check'],
+        ['npm', 'version', level, '--no-git-tag-version'],
+        ['npm', 'run', 'publish:dry-run'],
+        ['git', 'add', '--', 'package.json', 'package-lock.json'],
+        ['git', 'commit', '-m', `chore(release): v${version}`],
+        ['git', 'tag', '-a', `v${version}`, '-m', `Release v${version}`],
+        ['git', 'push', '--atomic', 'origin', 'HEAD:refs/heads/main', `refs/tags/v${version}`]
+      ]);
+    });
+
+  it.each([
+    ['branch', { 'branch --show-current': 'feature' }],
+    ['dirty', { 'status --porcelain': ' M src/index.ts' }],
+    ['behind', { 'rev-parse origin/main': 'new-sha' }]
+  ])('stops before changing versions on %s state', (_state, overrides) => {
+    const { calls, run } = recorder();
+    expect(() => release('patch', { run, capture: captureOn(overrides) })).toThrow();
     expect(calls.some((call) => call[0] === 'npm')).toBe(false);
   });
 
-  it('rehearses the publish on the bumped version before committing', () => {
-    const calls = [];
-    release('patch', { run: (command, args) => calls.push([command, ...args]), capture: cleanMain, readVersion: versionAfterBump(calls) });
-    expect(calls).toContainEqual(['npm', 'version', 'patch', '--no-git-tag-version']);
-    expect(calls).toContainEqual(['npm', 'run', 'publish:dry-run']);
-    const bump = calls.findIndex((call) => call[1] === 'version');
-    const rehearsal = calls.findIndex((call) => call[2] === 'publish:dry-run');
-    expect(bump).toBeLessThan(rehearsal);
-    expect(rehearsal).toBeLessThan(calls.findIndex((call) => call[1] === 'add'));
-    expect(rehearsal).toBeLessThan(calls.findIndex((call) => call[1] === 'commit'));
+  it('rejects a level that is not patch, minor or major', () => {
+    const { calls, run } = recorder();
+    expect(() => release('bogus', { run, capture: cleanMain })).toThrow('Expected patch, minor or major');
+    expect(calls).toEqual([]);
   });
 
-  it('does not commit, tag or push when the publish rehearsal fails', () => {
+  it('does not commit, tag or push when the bumped version is not a plain semver', () => {
+    const { calls, run } = recorder();
+    expect(() => release('patch', { run, capture: cleanMain, readVersion: () => '1.2' }))
+      .toThrow('Unexpected release version');
+    expect(calls.some((call) => ['add', 'commit', 'tag', 'push'].includes(call[1]))).toBe(false);
+  });
+
+  it('does not stage, commit, tag or push when the publish rehearsal fails', () => {
     const calls = [];
     const failures = { 'npm run publish:dry-run': () => { throw new Error('publish rehearsal failed'); } };
     const run = (command, args) => {
       calls.push([command, ...args]);
       return failures[[command, ...args].join(' ')]?.();
     };
-    expect(() => release('patch', { run, capture: cleanMain, readVersion: versionAfterBump(calls) })).toThrow('publish rehearsal failed');
+    expect(() => release('patch', { run, capture: cleanMain, readVersion: versionAfterBump(calls, '1.2.4') }))
+      .toThrow('publish rehearsal failed');
     expect(calls.some((call) => ['add', 'commit', 'tag', 'push'].includes(call[1]))).toBe(false);
   });
 });
