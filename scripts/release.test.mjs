@@ -13,11 +13,24 @@ describe('release workflow', () => {
     const calls = [];
     return { calls, run: (command, args) => calls.push([command, ...args]) };
   };
+  // Records the git reads as well, so replacing one with a different ref or a
+  // hard-coded value shows up instead of falling through to the permissive default.
+  const watching = (reads, impl) => (args) => {
+    reads.push([...args]);
+    return impl(args);
+  };
 
   it.each([['patch', '1.2.4'], ['minor', '1.3.0'], ['major', '2.0.0']])(
     'runs the exact %s release sequence', (level, version) => {
       const { calls, run } = recorder();
-      release(level, { run, capture: cleanMain, readVersion: versionAfterBump(calls, version) });
+      const reads = [];
+      release(level, { run, capture: watching(reads, cleanMain), readVersion: versionAfterBump(calls, version) });
+      expect(reads).toEqual([
+        ['branch', '--show-current'],
+        ['status', '--porcelain'],
+        ['rev-parse', 'HEAD'],
+        ['rev-parse', 'origin/main']
+      ]);
       expect(calls).toEqual([
         ['git', 'fetch', 'origin', 'main', '--quiet'],
         ['npm', 'run', 'check'],
