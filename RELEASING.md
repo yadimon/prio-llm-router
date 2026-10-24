@@ -61,28 +61,28 @@ These scripts:
 - create the Git commit and `v*` tag
 - push the commit and tag to `origin`
 
-The rehearsal runs after the bump because `npm publish --dry-run` queries the
-registry and refuses a version that is already published. If it fails, the bumped
-`package.json` and `package-lock.json` are left in the working tree and nothing is
-committed, tagged or pushed. Restore them with `git checkout -- package.json
-package-lock.json` before retrying, because the script requires a clean tree.
+The rehearsal runs after the bump because from npm 11 on `npm publish --dry-run`
+queries the registry and refuses a version that is already published, so it can
+only pass once the version is new. If it fails, the bumped `package.json` and
+`package-lock.json` are left in the working tree and nothing is committed, tagged
+or pushed. Restore them with `git checkout -- package.json package-lock.json`
+before retrying, because the script requires a clean tree.
 
 2. GitHub Actions sees the pushed `v*` tag and publishes that version to npm with Trusted Publishing
 
-If you prefer the manual equivalent, it is:
+There is deliberately no hand-written equivalent of this sequence here. The
+script is the supported path because it enforces preconditions that a copied
+command list does not:
 
-```bash
-npm run check
-npm version patch --no-git-tag-version
-npm run publish:dry-run
-git add -- package.json package-lock.json
-git commit -m "chore(release): v<version>"
-git tag -a "v<version>" -m "Release v<version>"
-git push --atomic origin HEAD:refs/heads/main "refs/tags/v<version>"
-```
+- the release must start on `main`
+- the working tree must be clean, so unrelated staged changes cannot enter the
+  release commit (`npm version --no-git-tag-version` does not check this itself)
+- `HEAD` must equal `origin/main` after a fetch
+- every step must succeed before the next one runs, so a failed rehearsal cannot
+  be followed by a commit, tag and push
 
-Run `npm run publish:dry-run` after the bump, not before: `npm run check` no
-longer contains it, and it only succeeds once the version is unpublished.
+If you have to reproduce it by hand, read `scripts/release.mjs` and keep those
+guarantees, rather than working from a copy of the commands that can drift.
 
 ## Notes
 

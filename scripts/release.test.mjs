@@ -3,13 +3,18 @@ import { release } from './release.mjs';
 
 describe('release workflow', () => {
   const cleanMain = (args) => args[0] === 'branch' ? 'main' : args[0] === 'status' ? '' : 'same-sha';
+  // Reports the pre-bump version until `npm version` has run, so reading it too
+  // early shows up as the wrong version in the commit message and tag.
+  const versionAfterBump = (calls) => () => ['1.2.3', '1.2.4'][Number(calls.some((call) => call[1] === 'version'))];
 
   it('checks before bumping and creates a conventional commit and explicit atomic tag push', () => {
     const calls = [];
-    release('patch', { run: (command, args) => calls.push([command, ...args]), capture: cleanMain, readVersion: () => '1.2.4' });
-    expect(calls.indexOf(calls.find((call) => call[1] === 'run'))).toBeLessThan(calls.indexOf(calls.find((call) => call[1] === 'version')));
+    release('patch', { run: (command, args) => calls.push([command, ...args]), capture: cleanMain, readVersion: versionAfterBump(calls) });
+    expect(calls).toContainEqual(['npm', 'run', 'check']);
+    expect(calls.findIndex((call) => call[2] === 'check')).toBeLessThan(calls.findIndex((call) => call[1] === 'version'));
     expect(calls).toContainEqual(['npm', 'version', 'patch', '--no-git-tag-version']);
     expect(calls).toContainEqual(['git', 'commit', '-m', 'chore(release): v1.2.4']);
+    expect(calls).toContainEqual(['git', 'tag', '-a', 'v1.2.4', '-m', 'Release v1.2.4']);
     expect(calls.at(-1)).toEqual(['git', 'push', '--atomic', 'origin', 'HEAD:refs/heads/main', 'refs/tags/v1.2.4']);
   });
 
@@ -27,7 +32,7 @@ describe('release workflow', () => {
 
   it('rehearses the publish on the bumped version before committing', () => {
     const calls = [];
-    release('patch', { run: (command, args) => calls.push([command, ...args]), capture: cleanMain, readVersion: () => '1.2.4' });
+    release('patch', { run: (command, args) => calls.push([command, ...args]), capture: cleanMain, readVersion: versionAfterBump(calls) });
     expect(calls).toContainEqual(['npm', 'version', 'patch', '--no-git-tag-version']);
     expect(calls).toContainEqual(['npm', 'run', 'publish:dry-run']);
     const bump = calls.findIndex((call) => call[1] === 'version');
@@ -44,7 +49,7 @@ describe('release workflow', () => {
       calls.push([command, ...args]);
       return failures[[command, ...args].join(' ')]?.();
     };
-    expect(() => release('patch', { run, capture: cleanMain, readVersion: () => '1.2.4' })).toThrow('publish rehearsal failed');
+    expect(() => release('patch', { run, capture: cleanMain, readVersion: versionAfterBump(calls) })).toThrow('publish rehearsal failed');
     expect(calls.some((call) => ['add', 'commit', 'tag', 'push'].includes(call[1]))).toBe(false);
   });
 });
