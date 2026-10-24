@@ -33,11 +33,3 @@ release policy. Keep compatible SDK 6 updates flowing while that change is prepa
 Sources: https://ai-sdk.dev/docs/migration-guides/migration-guide-7-0 and the exact
 npm manifests for the selected versions. Re-resolve versions when implementing;
 this plan deliberately does not pin a future migration to today's latest patch.
-
-## Temporary build-tool override
-
-The repository overrides esbuild to ^0.28.2 because tsup 8.5.1 still selects the
-affected ^0.27 line (GHSA-g7r4-m6w7-qqqr). This is a development build dependency,
-not a runtime dependency of the published router. Full build, declaration,
-ESM/CJS packaging and tests validate the override. Remove it when tsup's supported
-range includes a patched esbuild. Do not generalize this override to SDK peers.
