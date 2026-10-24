@@ -15,6 +15,15 @@ Run:
 ```bash
 npm run check
 npm run pack
+```
+
+`npm run check` deliberately stops at packaging validation. `npm publish --dry-run`
+is a release step, not a checkout step: from npm 11 on it queries the registry and
+fails on an ordinary checkout whose version is already published. It runs inside
+`npm run release:*` after the version bump and in the publish workflow before
+`npm publish`. To rehearse it by hand, bump the version first:
+
+```bash
 npm run publish:dry-run
 ```
 
@@ -26,7 +35,6 @@ This verifies:
 - build
 - `npm pack --dry-run`
 - `publint`
-- `npm publish --dry-run`
 
 ## What Gets Published
 

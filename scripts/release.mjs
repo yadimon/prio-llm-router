@@ -28,6 +28,7 @@ export function release(level, {
   const version = readVersion();
   if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Unexpected release version');
   const tag = `v${version}`;
+  run('npm', ['run', 'publish:dry-run']);
   run('git', ['add', '--', 'package.json', 'package-lock.json']);
   run('git', ['commit', '-m', `chore(release): ${tag}`]);
   run('git', ['tag', '-a', tag, '-m', `Release ${tag}`]);

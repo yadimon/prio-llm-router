@@ -57,8 +57,15 @@ These scripts:
 
 - run `npm run check`
 - run `npm version ...`
+- rehearse the publish with `npm run publish:dry-run` on the bumped version
 - create the Git commit and `v*` tag
 - push the commit and tag to `origin`
+
+The rehearsal runs after the bump because `npm publish --dry-run` queries the
+registry and refuses a version that is already published. If it fails, the bumped
+`package.json` and `package-lock.json` are left in the working tree and nothing is
+committed, tagged or pushed. Restore them with `git checkout -- package.json
+package-lock.json` before retrying, because the script requires a clean tree.
 
 2. GitHub Actions sees the pushed `v*` tag and publishes that version to npm with Trusted Publishing
 
