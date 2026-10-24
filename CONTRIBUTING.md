@@ -9,7 +9,11 @@ npm install
 npm run check
 ```
 
-The repository targets Node.js `>=18.18` and uses npm as the package manager.
+The published package targets Node.js `>=18.18` and the repository uses npm as
+the package manager. Local development needs a newer Node than that floor, because
+the build and test toolchain requires it: tsup 9 needs
+`^22.18.0 || ^24.11.0 || >=26.0.0` and vitest 5 needs
+`^22.12.0 || ^24.0.0 || >=26.0.0`. CI runs the toolchain on Node 22 and 24.
 
 ## Project Expectations
 

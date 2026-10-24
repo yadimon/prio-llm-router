@@ -73,9 +73,16 @@ If you prefer the manual equivalent, it is:
 
 ```bash
 npm run check
-npm version patch
-git push origin HEAD --follow-tags
+npm version patch --no-git-tag-version
+npm run publish:dry-run
+git add -- package.json package-lock.json
+git commit -m "chore(release): v<version>"
+git tag -a "v<version>" -m "Release v<version>"
+git push --atomic origin HEAD:refs/heads/main "refs/tags/v<version>"
 ```
+
+Run `npm run publish:dry-run` after the bump, not before: `npm run check` no
+longer contains it, and it only succeeds once the version is unpublished.
 
 ## Notes
 
