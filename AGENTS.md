@@ -16,7 +16,11 @@ The project priorities are:
 ## Technical Baseline
 
 - Language: TypeScript
-- Runtime target: Node.js `>=18.18`
+- Runtime target: Node.js `>=18.18`, set by `engines` and the tsup `target`.
+- CI Node matrix: development toolchain only, currently 22 and 24. It does not
+  define the runtime contract, so it tracks supported Node releases and the
+  version `publish.yml` uses. Changing the runtime target means changing
+  `engines`, the tsup `target`, `README.md` and the release notes together.
 - Build: `tsup`
 - Tests: `vitest`
 - Lint: `eslint`
