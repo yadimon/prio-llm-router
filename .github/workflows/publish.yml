@@ -43,5 +43,8 @@ jobs:
       - name: Verify package
         run: npm run check
 
+      - name: Rehearse publish
+        run: npm run publish:dry-run
+
       - name: Publish to npm with Trusted Publishing
         run: npm publish

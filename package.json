@@ -42,7 +42,7 @@
     "release:patch": "node ./scripts/release.mjs patch",
     "release:minor": "node ./scripts/release.mjs minor",
     "release:major": "node ./scripts/release.mjs major",
-    "check": "npm run lint && npm run typecheck && npm run test && npm run build && npm run pack:check && npm run publish:dry-run"
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build && npm run pack:check"
   },
   "keywords": [
     "llm",

@@ -24,4 +24,24 @@ describe('release workflow', () => {
     expect(() => release('patch', { run: (command, args) => calls.push([command, ...args]), capture })).toThrow();
     expect(calls.some((call) => call[0] === 'npm')).toBe(false);
   });
+
+  it('rehearses the publish on the bumped version before committing', () => {
+    const calls = [];
+    release('patch', { run: (command, args) => calls.push([command, ...args]), capture: cleanMain, readVersion: () => '1.2.4' });
+    const bump = calls.findIndex((call) => call[1] === 'version');
+    const rehearsal = calls.findIndex((call) => call[2] === 'publish:dry-run');
+    expect(bump).toBeLessThan(rehearsal);
+    expect(rehearsal).toBeLessThan(calls.findIndex((call) => call[1] === 'commit'));
+  });
+
+  it('does not commit, tag or push when the publish rehearsal fails', () => {
+    const calls = [];
+    const failures = { 'npm run publish:dry-run': () => { throw new Error('publish rehearsal failed'); } };
+    const run = (command, args) => {
+      calls.push([command, ...args]);
+      return failures[[command, ...args].join(' ')]?.();
+    };
+    expect(() => release('patch', { run, capture: cleanMain, readVersion: () => '1.2.4' })).toThrow('publish rehearsal failed');
+    expect(calls.some((call) => ['commit', 'tag', 'push'].includes(call[1]))).toBe(false);
+  });
 });
